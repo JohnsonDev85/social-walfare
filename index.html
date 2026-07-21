@@ -4,30 +4,26 @@
     <meta charset="UTF-8">
     <link rel="stylesheet" href="./style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MFUKO WA USTAWI WA JAMII-KIDEGEMBYE SS</title>
+    <title>MFUKO WA USTAWI WA JAMII - KIDEGEMBYE SS</title>
   </head>
   <body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 <div id="authScreen" class="center-screen">
   <div class="ledger-card auth-card">
     <div class="brand">
       <div class="mark">MFUKO WA <span><strong>USTAWI</strong></span> WA JAMII</div>
       <div class="sub">Kidegembye Secondary School</div>
     </div>
-
     <div id="authMsg"></div>
-
     <div id="loginForm">
       <div class="field">
         <label>Email</label>
-        <input type="email" id="loginEmail" placeholder="jina@mfano.com">
+        <input type="email" id="loginEmail" placeholder="name@example.com">
       </div>
       <div class="field">
         <label>Password</label>
@@ -35,47 +31,49 @@
       </div>
      <button class="btn btn-primary" onclick="doLogin()">Login</button>
       <div style="text-align:center; margin-top:14px; display:flex; flex-direction:column; gap:8px;">
-        <button class="link-btn" onclick="showRegister()">Don't have account? Register</button>
+        <button class="link-btn" onclick="showRegister()">Don't have an account? Register</button>
         <button class="link-btn" onclick="showForgotPassword()">Forgot Password?</button>
       </div>
     </div>
-
     <!-- FORGOT PASSWORD -->
     <div id="forgotPasswordForm" class="hidden">
       <p style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:16px;">
-        Weka Email uliyotumia kujisajili. utatumiwa link ya kubadilisha password.
+        Enter the email you used to register. You'll receive a link to reset your password.
       </p>
       <div class="field">
         <label>Email</label>
-        <input type="email" id="forgotEmail" placeholder="jina@mfano.com">
+        <input type="email" id="forgotEmail" placeholder="name@example.com">
       </div>
-      <button class="btn btn-primary" onclick="doPasswordReset()">Tuma Link ya Kubadilisha Password</button>
+      <button class="btn btn-primary" onclick="doPasswordReset()">Send Password Reset Link</button>
       <div style="text-align:center; margin-top:14px;">
-        <button class="link-btn" onclick="showLogin()">Logback</button>
+        <button class="link-btn" onclick="showLogin()">Back to Login</button>
       </div>
     </div>
-
     <div id="registerForm" class="hidden">
       <div class="field">
-        <label>Jina kamili</label>
-        <input type="text" id="regName" placeholder="mf. Johnson Yona">
+        <label>Full Name</label>
+        <input type="text" id="regName" placeholder="e.g. Johnson Yona">
       </div>
       <div class="field">
         <label>Email</label>
-        <input type="email" id="regEmail" placeholder="jina@mfano.com">
+        <input type="email" id="regEmail" placeholder="name@example.com">
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="password" id="regPassword" placeholder="Atleast herufi 6">
+        <input type="password" id="regPassword" placeholder="At least 6 characters">
       </div>
-      <button class="btn btn-primary" onclick="doRegister()">Register as Mwanachama</button>
+      <button class="btn btn-primary" onclick="doRegister()">Register as Member</button>
       <div style="text-align:center; margin-top:14px;">
-        <button class="link-btn" onclick="showLogin()">Una akaunti? Login</button>
+        <button class="link-btn" onclick="showLogin()">Already have an account? Login</button>
       </div>
     </div>
-  </div>
-</div>
-
+  </div> 
+</div>  
+    <footer>
+    <p>&copy; 2026 Built by <strong>JohnsonDev85.</strong>All rights reserved!</p>
+    <p>Contacts: 0774633472 / 0624399338</p>
+    <p>Email: <a id="email" href="mailto:jyona0607@gmail.com">jyona0607@gmail.com</a></p>   
+  </footer> 
 <div id="appShell" class="hidden">
   <div class="app-header">
     <div class="h-left">
@@ -87,10 +85,9 @@
       <button class="btn btn-outline btn-sm" style="color:#FBF3E3; background-color:#0F7A5C;border-color:rgba(243,238,225,0.6);" onclick="doLogout()">Logout</button>
     </div>
   </div>
-
   <div class="app-body" id="appBody"></div>
-
   <footer class="foot-note">KIDEGEMBYE SS · MFUKO WA USTAWI WA JAMII · "THE ENDLESS LOVE"</footer>
+  
 </div>
     <script src="./script.js"></script>
   </body>
