@@ -275,3 +275,36 @@ footer.foot-note{
 @media (max-width:600px){
   .ledger-card{ padding:26px 22px; }
 }
+footer{
+  background-color: #0f2010;
+  width: 100%;
+  text-align: center;
+  position: absolute;
+  padding: 0;
+  margin: 0;
+  border-top: 3px solid var(--emerald);
+}
+footer p{
+  margin: 6px 0;
+  color: whitesmoke;
+  padding-left: 15px;
+  padding-right: 15px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+footer p:first-child{
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: #fff;
+  margin-bottom: 10px;
+}
+footer a{
+  text-decoration: none;
+  color: #7cbd4a;
+  font-weight: 600;
+}
+footer a:hover{
+  color: #9fd6ff;
+  text-decoration: underline;
+}
