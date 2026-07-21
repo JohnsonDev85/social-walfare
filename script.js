@@ -1,5 +1,5 @@
 /* =========================================================
-   FIREBASE CONFIG — BADILISHA HAPA NA CONFIG YAKO MWENYEWE
+   FIREBASE CONFIG — REPLACE WITH YOUR OWN CONFIG
    ========================================================= */
 const firebaseConfig = {
   apiKey: "AIzaSyD7yKHK1bC6OUhgg1cpA_dl7bXUa09aU1Q",
@@ -18,8 +18,8 @@ const db = firebase.firestore();
    ========================================================= */
 const MONTHLY_AMOUNT = 5000;
 const ASSISTANCE_AMOUNT = 150000;
-const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","Oktober","November","December"];
-const EVENT_TYPES = { msiba: "Msiba", kuuguza: "Kuuguza", mtoto: "Kupata Mtoto" };
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const EVENT_TYPES = { msiba: "Bereavement", kuuguza: "Illness/Care", mtoto: "Childbirth" };
 
 let currentUser = null;
 let currentProfile = null;
@@ -49,12 +49,12 @@ function showForgotPassword(){
 async function doPasswordReset(){
   const email = document.getElementById('forgotEmail').value.trim();
   if(!email){
-    showAuthMsg("Weka barua pepe yako kwanza.", "error");
+    showAuthMsg("Enter your email first.", "error");
     return;
   }
   try{
     await auth.sendPasswordResetEmail(email);
-    showAuthMsg("Tumetuma link ya kubadilisha password kwenye " + email + ". Kagua 'Inbox' au 'Spam'.", "ok");
+    showAuthMsg("A password reset link has been sent to " + email + ". Check your 'Inbox' or 'Spam' folder.", "ok");
   }catch(err){
     showAuthMsg(tafsiriKosa(err), "error");
   }
@@ -69,10 +69,10 @@ async function doRegister(){
   const password = document.getElementById('regPassword').value;
 
   if(!name || !email || !password){
-    showAuthMsg("Tafadhali jaza sehemu zote.", "error"); return;
+    showAuthMsg("Please fill in all fields.", "error"); return;
   }
   if(password.length < 6){
-    showAuthMsg("Password iwe atleast herufi 6.", "error"); return;
+    showAuthMsg("Password must be at least 6 characters.", "error"); return;
   }
 
   try{
@@ -93,7 +93,7 @@ async function doLogin(){
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   if(!email || !password){
-    showAuthMsg("Ingiza email na password.", "error"); return;
+    showAuthMsg("Enter email and password.", "error"); return;
   }
   try{
     await auth.signInWithEmailAndPassword(email, password);
@@ -108,12 +108,12 @@ function doLogout(){
 
 function tafsiriKosa(err){
   const code = err.code || "";
-  if(code.includes('email-already-in-use')) return "This email is already registered!.";
+  if(code.includes('email-already-in-use')) return "This email is already registered!";
   if(code.includes('invalid-email')) return "Invalid email.";
-  if(code.includes('wrong-password') || code.includes('invalid-credential')) return "Password au Email si sahihi.";
-  if(code.includes('user-not-found')) return "No Account. Register Now!.";
-  if(code.includes('weak-password')) return "Password ni dhaifu, weka atleast herufi 6.";
-  return "Error!: " + err.message;
+  if(code.includes('wrong-password') || code.includes('invalid-credential')) return "Incorrect email or password.";
+  if(code.includes('user-not-found')) return "No account found. Register now!";
+  if(code.includes('weak-password')) return "Password is weak, use at least 6 characters.";
+  return "Error: " + err.message;
 }
 
 /* =========================================================
@@ -124,13 +124,13 @@ auth.onAuthStateChanged(async (user)=>{
     currentUser = user;
     const doc = await db.collection('members').doc(user.uid).get();
     if(!doc.exists){
-      showAuthMsg("Wasiliana na msimamizi wa mfumo, taarifa zako hazipo kwenye mfumo.", "error");
+      showAuthMsg("Contact the system administrator, your information is not in the system.", "error");
       auth.signOut();
       return;
     }
     currentProfile = doc.data();
     if(currentProfile.status === 'removed'){
-      showAuthMsg("Uanachama wako umeondolewa kwenye mfuko. Wasiliana na Mwenyekiti.", "error");
+      showAuthMsg("Your membership has been removed from the fund. Contact the Chairman.", "error");
       auth.signOut();
       return;
     }
@@ -144,9 +144,9 @@ auth.onAuthStateChanged(async (user)=>{
 });
 
 function roleLabel(role){
-  if(role === 'chairman') return 'Mwenyekiti';
-  if(role === 'accountant') return 'Mhasibu';
-  return 'Mwanachama';
+  if(role === 'chairman') return 'Chairman';
+  if(role === 'accountant') return 'Accountant';
+  return 'Member';
 }
 function themeClassFor(role){
   if(role === 'chairman') return 'theme-chairman';
@@ -178,7 +178,7 @@ function fmtTZS(n){
   return Number(n||0).toLocaleString('en-US');
 }
 function currentYear(){ return new Date().getFullYear(); }
-function yearMonthOptionsHTML(prefixId){
+function yearMonthOptionsHTML(){
   const yearOptions = [currentYear()-1, currentYear(), currentYear()+1]
     .map(y=>`<option value="${y}" ${y===currentYear()?'selected':''}>${y}</option>`).join('');
   const monthOptions = MONTH_NAMES.map((mn,i)=>`<option value="${i+1}" ${i+1===new Date().getMonth()+1?'selected':''}>${mn}</option>`).join('');
@@ -190,15 +190,16 @@ function yearMonthOptionsHTML(prefixId){
    ========================================================= */
 async function renderMemberDashboard(){
   const body = document.getElementById('appBody');
-  body.innerHTML = `<div class="empty-state">Uploading your infos...</div>`;
+  body.innerHTML = `<div class="empty-state">Loading your information...</div>`;
 
   const uid = currentUser.uid;
   const year = currentYear();
 
-  const [contribSnap, allPaidReqSnap, allContribSnap] = await Promise.all([
+  const [contribSnap, allPaidReqSnap, allContribSnap, allConfirmedIncomeSnap] = await Promise.all([
     db.collection('contributions').where('memberId','==',uid).where('year','==',year).get(),
     db.collection('assistanceRequests').where('status','==','paid').get(),
-    db.collection('contributions').where('memberId','==',uid).get()
+    db.collection('contributions').where('memberId','==',uid).get(),
+    db.collection('extraIncome').where('status','==','confirmed').get()
   ]);
 
   const paidMonths = {};
@@ -213,7 +214,15 @@ async function renderMemberDashboard(){
     const cnt = req.membersCountAtTime || 1;
     totalUsedShare += (ASSISTANCE_AMOUNT / cnt);
   });
-  const remaining = totalContributed - totalUsedShare;
+
+  let incomeBonus = 0;
+  allConfirmedIncomeSnap.forEach(d=>{
+    const inc = d.data();
+    const cnt = inc.membersCountAtTime || 1;
+    incomeBonus += (Number(inc.amount||0) / cnt);
+  });
+
+  const remaining = totalContributed - totalUsedShare + incomeBonus;
 
   let monthsRows = '';
   for(let m=1; m<=12; m++){
@@ -221,27 +230,31 @@ async function renderMemberDashboard(){
     monthsRows += `<tr>
       <td>${MONTH_NAMES[m-1]} ${year}</td>
       <td class="amount">${paid ? 'TZS '+fmtTZS(paidMonths[m]) : '—'}</td>
-      <td>${paid ? '<span class="stamp stamp-paid">Paid</span>' : '<span class="stamp stamp-unpaid">Not- paid</span>'}</td>
+      <td>${paid ? '<span class="stamp stamp-paid">Paid</span>' : '<span class="stamp stamp-unpaid">Not Paid</span>'}</td>
     </tr>`;
   }
 
   body.innerHTML = `
     <div class="section-title">
-      <h1>Welcome! ${currentProfile.name.split(' ')[0]}</h1>
+      <h1>Welcome, ${currentProfile.name.split(' ')[0]}!</h1>
       <span class="eyebrow">"Kamwene!"</span>
     </div>
 
     <div class="grid grid-3" style="margin-bottom:24px;">
       <div class="stat-card">
-        <div class="label">Total contribution</div>
+        <div class="label">Total Contribution</div>
         <div class="value">TZS ${fmtTZS(totalContributed)}</div>
       </div>
       <div class="stat-card neg">
-        <div class="label">Payout</div>
+        <div class="label">Payout Used</div>
         <div class="value">TZS ${fmtTZS(Math.round(totalUsedShare))}</div>
       </div>
+      <div class="stat-card pos">
+        <div class="label">Income Bonus</div>
+        <div class="value">TZS ${fmtTZS(Math.round(incomeBonus))}</div>
+      </div>
       <div class="stat-card ${remaining>=0?'pos':'neg'}">
-        <div class="label">Remaining</div>
+        <div class="label">Remaining Balance</div>
         <div class="value">TZS ${fmtTZS(Math.round(remaining))}</div>
       </div>
     </div>
@@ -249,7 +262,7 @@ async function renderMemberDashboard(){
     <div class="card">
       <div class="section-title"><h3>Contribution Status — ${year}</h3></div>
       <table>
-        <thead><tr><th>Mwezi</th><th>Kiasi</th><th>Status</th></tr></thead>
+        <thead><tr><th>Month</th><th>Amount</th><th>Status</th></tr></thead>
         <tbody>${monthsRows}</tbody>
       </table>
     </div>
@@ -262,20 +275,21 @@ let chairmanTab = 'members';
 
 async function renderChairmanDashboard(){
   const body = document.getElementById('appBody');
-  body.innerHTML = `<div class="empty-state">Uploading Dashboard ya Mwenyekiti...</div>`;
+  body.innerHTML = `<div class="empty-state">Loading Chairman Dashboard...</div>`;
   await fetchAllMembers();
 
   body.innerHTML = `
     <div class="section-title">
-      <h1> Mwenyekiti Ustawi</h1>
-      <span class="eyebrow">Usimamizi wa Mfuko</span>
+      <h1>Chairman Dashboard</h1>
+      <span class="eyebrow">Fund Management</span>
     </div>
 
     <div class="tabs-row">
-      <button class="tab-btn ${chairmanTab==='members'?'active':''}" onclick="switchChairmanTab('members')">Wanachama</button>
-      <button class="tab-btn ${chairmanTab==='monthly'?'active':''}" onclick="switchChairmanTab('monthly')">Payout ya Mwezi</button>
-      <button class="tab-btn ${chairmanTab==='newRequest'?'active':''}" onclick="switchChairmanTab('newRequest')">New Payout request</button>
-      <button class="tab-btn ${chairmanTab==='requests'?'active':''}" onclick="switchChairmanTab('requests')">All Request</button>
+      <button class="tab-btn ${chairmanTab==='members'?'active':''}" onclick="switchChairmanTab('members')">Members</button>
+      <button class="tab-btn ${chairmanTab==='monthly'?'active':''}" onclick="switchChairmanTab('monthly')">Monthly Payment Status</button>
+      <button class="tab-btn ${chairmanTab==='newRequest'?'active':''}" onclick="switchChairmanTab('newRequest')">New Payout Request</button>
+      <button class="tab-btn ${chairmanTab==='requests'?'active':''}" onclick="switchChairmanTab('requests')">All Requests</button>
+      <button class="tab-btn ${chairmanTab==='income'?'active':''}" onclick="switchChairmanTab('income')">Income Report</button>
     </div>
 
     <div id="chairmanContent"></div>
@@ -306,13 +320,13 @@ async function renderChairmanTabContent(){
               : `<button class="btn btn-outline btn-sm" onclick="restoreMember('${m.id}')">Restore</button>`}</td>
       </tr>`;
     });
-    if(!rows) rows = `<tr><td colspan="4" class="empty-state">No any registered members.</td></tr>`;
+    if(!rows) rows = `<tr><td colspan="4" class="empty-state">No registered members yet.</td></tr>`;
 
     c.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>List ya Wanachama (${allMembersCache.filter(m=>m.role==='member').length})</h3></div>
+        <div class="section-title"><h3>Members List (${allMembersCache.filter(m=>m.role==='member').length})</h3></div>
         <table>
-          <thead><tr><th>Jina</th><th>Email</th><th>Status</th><th>Action</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -323,21 +337,21 @@ async function renderChairmanTabContent(){
     const { yearOptions, monthOptions } = yearMonthOptionsHTML();
     c.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>Hali ya Malipo kwa Mwezi</h3></div>
+        <div class="section-title"><h3>Monthly Payment Status</h3></div>
         <p style="font-size:0.82rem; color:var(--ink-soft); margin-bottom:14px;">
-          Chagua mwezi na mwaka kuona wanachama waliolipa na wasiolipa. (Ni Mhasibu tu anayeweza kuingiza/kubadilisha malipo.)
+          Select month and year to see which members have paid and which haven't. (Only the Accountant can enter/edit payments.)
         </p>
         <div class="form-row">
           <div class="field">
-            <label>Mwezi</label>
+            <label>Month</label>
             <select id="chMonth">${monthOptions}</select>
           </div>
           <div class="field">
-            <label>Mwaka</label>
+            <label>Year</label>
             <select id="chYear">${yearOptions}</select>
           </div>
         </div>
-        <button class="btn btn-outline" onclick="loadChairmanMonthlyView()">View payment status</button>
+        <button class="btn btn-outline" onclick="loadChairmanMonthlyView()">View Payment Status</button>
       </div>
       <div id="chMonthlyResult"></div>
     `;
@@ -349,37 +363,37 @@ async function renderChairmanTabContent(){
     const options = activeMembers.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
     c.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>New payout request</h3></div>
+        <div class="section-title"><h3>New Payout Request</h3></div>
         <div id="reqMsg"></div>
         <div class="form-row">
           <div class="field">
-            <label>Mwanachama Mnufaika</label>
-            <select id="reqMember">${options || '<option>No active member</option>'}</select>
+            <label>Beneficiary Member</label>
+            <select id="reqMember">${options || '<option>No active members</option>'}</select>
           </div>
           <div class="field">
-            <label>Aina ya Tukio</label>
+            <label>Event Type</label>
             <select id="reqType">
-              <option value="msiba">Msiba</option>
-              <option value="kuuguza">Kuuguza</option>
-              <option value="mtoto">Kupata Mtoto</option>
+              <option value="msiba">Bereavement</option>
+              <option value="kuuguza">Illness/Care</option>
+              <option value="mtoto">Childbirth</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <div class="field">
-            <label>Tarehe ya Tukio</label>
+            <label>Event Date</label>
             <input type="date" id="reqDate">
           </div>
           <div class="field">
-            <label>Kiasi cha Payout</label>
+            <label>Payout Amount</label>
             <input type="text" value="TZS ${fmtTZS(ASSISTANCE_AMOUNT)}" disabled>
           </div>
         </div>
         <div class="field">
-          <label>Maelezo</label>
-          <textarea id="reqDesc" rows="3" placeholder="Maelezo mafupi ya tukio..."></textarea>
+          <label>Description</label>
+          <textarea id="reqDesc" rows="3" placeholder="Brief description of the event..."></textarea>
         </div>
-        <button class="btn btn-primary" onclick="submitAssistanceRequest()">Send request to Mhasibu</button>
+        <button class="btn btn-primary" onclick="submitAssistanceRequest()">Send Request to Accountant</button>
       </div>
     `;
   }
@@ -395,7 +409,7 @@ async function renderChairmanTabContent(){
         : '<span class="stamp stamp-pending">Pending</span>';
       const deleteBtn = r.status === 'pending'
         ? `<button class="btn btn-danger btn-sm" onclick="deleteAssistanceRequest('${d.id}')">Delete</button>`
-        : `<span style="color:var(--ink-soft); font-size:0.75rem;">Cannot be erased</span>`;
+        : `<span style="color:var(--ink-soft); font-size:0.75rem;">Cannot be deleted</span>`;
       rows += `<tr>
         <td>${member ? member.name : '—'}</td>
         <td>${EVENT_TYPES[r.type]||r.type}</td>
@@ -405,26 +419,107 @@ async function renderChairmanTabContent(){
         <td>${deleteBtn}</td>
       </tr>`;
     });
-    if(!rows) rows = `<tr><td colspan="6" class="empty-state">No any payout request.</td></tr>`;
+    if(!rows) rows = `<tr><td colspan="6" class="empty-state">No payout requests yet.</td></tr>`;
     c.innerHTML = `
       <div class="card">
         <div class="section-title"><h3>All Payout Requests</h3></div>
         <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
-          Unaweza kufuta ombi ambalo bado ni "pending" tu.
+          You can only delete a request that is still "pending".
         </p>
         <table>
-          <thead><tr><th>Mhusika</th><th>Aina</th><th>Tarehe ya Tukio</th><th>Kiasi</th><th>Status</th><th>Action</th></tr></thead>
+          <thead><tr><th>Beneficiary</th><th>Type</th><th>Event Date</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     `;
+  }
+
+  else if(chairmanTab === 'income'){
+    c.innerHTML = `
+      <div class="card">
+        <div class="section-title"><h3>Report New Income</h3></div>
+        <p style="font-size:0.82rem; color:var(--ink-soft); margin-bottom:14px;">
+          Use this when the fund receives money from a source other than regular monthly contributions
+          (e.g. a donation, top-up, or one-off gift). Once submitted, the Accountant must confirm it
+          before it's added to the fund balance.
+        </p>
+        <div id="incomeMsg"></div>
+        <div class="field">
+          <label>Source of Income</label>
+          <textarea id="incomeSource" rows="3" placeholder="e.g. Donation from alumni association, staff welfare top-up..."></textarea>
+        </div>
+        <div class="field" style="max-width:220px;">
+          <label>Amount (TZS)</label>
+          <input type="number" id="incomeAmount" placeholder="e.g. 200000">
+        </div>
+        <button class="btn btn-primary" onclick="submitIncomeReport()">Send to Accountant</button>
+      </div>
+      <div id="incomeHistory"></div>
+    `;
+    loadChairmanIncomeHistory();
+  }
+}
+
+async function loadChairmanIncomeHistory(){
+  const box = document.getElementById('incomeHistory');
+  if(!box) return;
+  const snap = await db.collection('extraIncome').orderBy('createdAtMillis','desc').get();
+  let rows = '';
+  snap.forEach(d=>{
+    const inc = d.data();
+    const statusHtml = inc.status === 'confirmed'
+      ? '<span class="stamp stamp-paid">Confirmed</span>'
+      : '<span class="stamp stamp-pending">Pending</span>';
+    rows += `<tr>
+      <td>${inc.description}</td>
+      <td class="amount">TZS ${fmtTZS(inc.amount)}</td>
+      <td>${statusHtml}</td>
+    </tr>`;
+  });
+  if(!rows) rows = `<tr><td colspan="3" class="empty-state">No income reports submitted yet.</td></tr>`;
+  box.innerHTML = `
+    <div class="card">
+      <div class="section-title"><h3>Income Report History</h3></div>
+      <table>
+        <thead><tr><th>Source / Description</th><th>Amount</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function submitIncomeReport(){
+  const msgBox = document.getElementById('incomeMsg');
+  const description = document.getElementById('incomeSource').value.trim();
+  const amount = parseFloat(document.getElementById('incomeAmount').value);
+
+  if(!description || !amount || amount <= 0){
+    msgBox.innerHTML = `<div class="msg msg-error">Please describe the income source and enter a valid amount.</div>`;
+    return;
+  }
+
+  try{
+    await db.collection('extraIncome').add({
+      description: description,
+      amount: amount,
+      status: 'pending',
+      submittedBy: currentUser.uid,
+      createdAtMillis: Date.now(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    msgBox.innerHTML = `<div class="msg msg-ok">Income report sent to the Accountant for confirmation.</div>`;
+    document.getElementById('incomeSource').value = '';
+    document.getElementById('incomeAmount').value = '';
+    loadChairmanIncomeHistory();
+  }catch(err){
+    msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
   }
 }
 
 async function loadChairmanMonthlyView(){
   const resultBox = document.getElementById('chMonthlyResult');
   if(!resultBox) return;
-  resultBox.innerHTML = `<div class="empty-state">Uploading...</div>`;
+  resultBox.innerHTML = `<div class="empty-state">Loading...</div>`;
 
   const month = parseInt(document.getElementById('chMonth').value);
   const year = parseInt(document.getElementById('chYear').value);
@@ -448,22 +543,22 @@ async function loadChairmanMonthlyView(){
     const paid = paidMap.hasOwnProperty(m.id);
     rows += `<tr>
       <td>${m.name}</td>
-      <td>${paid ? '<span class="stamp stamp-paid">Paid</span>' : '<span class="stamp stamp-unpaid">Not paid</span>'}</td>
+      <td>${paid ? '<span class="stamp stamp-paid">Paid</span>' : '<span class="stamp stamp-unpaid">Not Paid</span>'}</td>
       <td class="amount">${paid ? 'TZS '+fmtTZS(paidMap[m.id]) : '—'}</td>
     </tr>`;
   });
-  if(!rows) rows = `<tr><td colspan="3" class="empty-state">No Active member.</td></tr>`;
+  if(!rows) rows = `<tr><td colspan="3" class="empty-state">No active members.</td></tr>`;
 
   resultBox.innerHTML = `
     <div class="grid grid-3" style="margin-bottom:18px;">
       <div class="stat-card pos"><div class="label">Paid</div><div class="value">${paidCount}</div></div>
       <div class="stat-card neg"><div class="label">Unpaid</div><div class="value">${unpaidCount}</div></div>
-      <div class="stat-card"><div class="label">Jumla Zilizokusanywa</div><div class="value">TZS ${fmtTZS(totalCollected)}</div></div>
+      <div class="stat-card"><div class="label">Total Collected</div><div class="value">TZS ${fmtTZS(totalCollected)}</div></div>
     </div>
     <div class="card">
       <div class="section-title"><h3>${MONTH_NAMES[month-1]} ${year}</h3></div>
       <table>
-        <thead><tr><th>Jina</th><th>Status</th><th>Kiasi</th></tr></thead>
+        <thead><tr><th>Name</th><th>Status</th><th>Amount</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -471,7 +566,7 @@ async function loadChairmanMonthlyView(){
 }
 
 async function removeMember(memberId){
-  if(!confirm("Una uhakika unataka kumuondoa mwanachama huyu kwenye mfuko?")) return;
+  if(!confirm("Are you sure you want to remove this member from the fund?")) return;
   await db.collection('members').doc(memberId).update({ status:'removed' });
   await fetchAllMembers();
   renderChairmanTabContent();
@@ -490,7 +585,7 @@ async function submitAssistanceRequest(){
   const desc = document.getElementById('reqDesc').value.trim();
 
   if(!memberId || !eventDate){
-    msgBox.innerHTML = `<div class="msg msg-error">Chagua mwanachama na tarehe ya tukio.</div>`;
+    msgBox.innerHTML = `<div class="msg msg-error">Select a member and event date.</div>`;
     return;
   }
 
@@ -510,7 +605,7 @@ async function submitAssistanceRequest(){
       createdAtMillis: Date.now(),
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    msgBox.innerHTML = `<div class="msg msg-ok">Ombi limetumwa kwa Mhasibu kwa ajili ya malipo.</div>`;
+    msgBox.innerHTML = `<div class="msg msg-ok">Request sent to the Accountant for payment.</div>`;
     document.getElementById('reqDesc').value = '';
     document.getElementById('reqDate').value = '';
   }catch(err){
@@ -519,7 +614,7 @@ async function submitAssistanceRequest(){
 }
 
 async function deleteAssistanceRequest(reqId){
-  if(!confirm("Una uhakika unataka kufuta ombi hili la msaada? Kitendo hiki hakiwezi kurudishwa.")) return;
+  if(!confirm("Are you sure you want to delete this assistance request? This action cannot be undone.")) return;
   try{
     await db.collection('assistanceRequests').doc(reqId).delete();
     renderChairmanTabContent();
@@ -536,30 +631,37 @@ let reportMode = 'monthly'; // 'monthly' | 'annual'
 
 async function renderAccountantDashboard(){
   const body = document.getElementById('appBody');
-  body.innerHTML = `<div class="empty-state">Uploading dashboard ya Mhasibu...</div>`;
+  body.innerHTML = `<div class="empty-state">Loading Accountant Dashboard...</div>`;
   await fetchAllMembers();
 
-  // --- Muhtasari wa Fedha (Total Contributions / Payouts / Balance) ---
-  const [allContribSnapTop, allPaidReqSnapTop] = await Promise.all([
+  // --- Fund Summary (Total Contributions / Income / Payouts / Balance) ---
+  const [allContribSnapTop, allPaidReqSnapTop, allConfirmedIncomeSnapTop] = await Promise.all([
     db.collection('contributions').get(),
-    db.collection('assistanceRequests').where('status','==','paid').get()
+    db.collection('assistanceRequests').where('status','==','paid').get(),
+    db.collection('extraIncome').where('status','==','confirmed').get()
   ]);
   let totalContributedAll = 0;
   allContribSnapTop.forEach(d=> totalContributedAll += Number(d.data().amount||0));
   let totalPaidOutAll = 0;
   allPaidReqSnapTop.forEach(d=> totalPaidOutAll += Number(d.data().amount||0));
-  const fundBalanceTop = totalContributedAll - totalPaidOutAll;
+  let totalIncomeAll = 0;
+  allConfirmedIncomeSnapTop.forEach(d=> totalIncomeAll += Number(d.data().amount||0));
+  const fundBalanceTop = totalContributedAll + totalIncomeAll - totalPaidOutAll;
 
   body.innerHTML = `
     <div class="section-title">
-      <h1>MHASIBU USTAWI KSS</h1>
-      <span class="eyebrow">Usimamizi wa Fedha za Mfuko</span>
+      <h1>Accountant Dashboard</h1>
+      <span class="eyebrow">Fund Financial Management</span>
     </div>
 
     <div class="grid grid-3" style="margin-bottom:24px;">
       <div class="stat-card">
         <div class="label">Total Contributions</div>
         <div class="value">TZS ${fmtTZS(totalContributedAll)}</div>
+      </div>
+      <div class="stat-card pos">
+        <div class="label">Other Confirmed Income</div>
+        <div class="value">TZS ${fmtTZS(totalIncomeAll)}</div>
       </div>
       <div class="stat-card neg">
         <div class="label">Total Payouts</div>
@@ -573,8 +675,9 @@ async function renderAccountantDashboard(){
 
     <div class="tabs-row">
       <button class="tab-btn ${accountantTab==='record'?'active':''}" onclick="switchAccountantTab('record')">Enter Contributions</button>
-      <button class="tab-btn ${accountantTab==='payouts'?'active':''}" onclick="switchAccountantTab('payouts')">Payout requests</button>
-      <button class="tab-btn ${accountantTab==='report'?'active':''}" onclick="switchAccountantTab('report')">Ripoti ya PDF</button>
+      <button class="tab-btn ${accountantTab==='payouts'?'active':''}" onclick="switchAccountantTab('payouts')">Payout Requests</button>
+      <button class="tab-btn ${accountantTab==='income'?'active':''}" onclick="switchAccountantTab('income')">Income Approval</button>
+      <button class="tab-btn ${accountantTab==='report'?'active':''}" onclick="switchAccountantTab('report')">PDF Report</button>
     </div>
 
     <div id="accountantContent"></div>
@@ -607,37 +710,37 @@ async function renderAccountantTabContent(){
         <td><button class="btn btn-danger btn-sm" onclick="deleteContribution('${d.id}')">Delete</button></td>
       </tr>`;
     });
-    if(!recentRows) recentRows = `<tr><td colspan="4" class="empty-state">No any record.</td></tr>`;
+    if(!recentRows) recentRows = `<tr><td colspan="4" class="empty-state">No records yet.</td></tr>`;
 
     c.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>Ingiza Malipo ya Mchango wa Mwezi</h3></div>
+        <div class="section-title"><h3>Record Monthly Contribution Payment</h3></div>
         <div id="recMsg"></div>
         <div class="form-row">
           <div class="field">
-            <label>Mwanachama</label>
-            <select id="recMember">${options || '<option>No Active Member</option>'}</select>
+            <label>Member</label>
+            <select id="recMember">${options || '<option>No active members</option>'}</select>
           </div>
           <div class="field">
-            <label>Mwezi</label>
+            <label>Month</label>
             <select id="recMonth">${monthOptions}</select>
           </div>
           <div class="field">
-            <label>Mwaka</label>
+            <label>Year</label>
             <select id="recYear">${yearOptions}</select>
           </div>
         </div>
         <div class="field" style="max-width:220px;">
-          <label>Kiasi Kilicholipwa (TZS)</label>
+          <label>Amount Paid (TZS)</label>
           <input type="number" id="recAmount" value="${MONTHLY_AMOUNT}">
         </div>
         <button class="btn btn-primary" onclick="recordContribution()">Save Contribution</button>
       </div>
 
       <div class="card">
-        <div class="section-title"><h3>Rekodi za Hivi Karibuni (futa kama kuna kosa)</h3></div>
+        <div class="section-title"><h3>Recent Records (delete if there's an error)</h3></div>
         <table>
-          <thead><tr><th>Mwanachama</th><th>Mwezi/Mwaka</th><th>Kiasi</th><th>Kitendo</th></tr></thead>
+          <thead><tr><th>Member</th><th>Month/Year</th><th>Amount</th><th>Action</th></tr></thead>
           <tbody>${recentRows}</tbody>
         </table>
       </div>
@@ -645,9 +748,6 @@ async function renderAccountantTabContent(){
   }
 
   else if(accountantTab === 'payouts'){
-    // FIX: Ondoa orderBy kutoka kwenye Firestore query (ilihitaji composite index
-    // ambayo haikuwepo, ndiyo sababu maombi hayakuwa yakionekana). Sasa tunapanga
-    // matokeo humo humo JS baada ya kuyapata.
     const snap = await db.collection('assistanceRequests').where('status','==','pending').get();
     let docs = [];
     snap.forEach(d=> docs.push({ id:d.id, ...d.data() }));
@@ -668,10 +768,61 @@ async function renderAccountantTabContent(){
     if(!rows) rows = `<tr><td colspan="6" class="empty-state">No pending requests.</td></tr>`;
     c.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>Pending Request za Malipo</h3></div>
+        <div class="section-title"><h3>Pending Payout Requests</h3></div>
         <table>
-          <thead><tr><th>Mhusika</th><th>Aina ya tukio</th><th>Tarehe</th><th>Maelezo</th><th>Kiasi</th><th></th></tr></thead>
+          <thead><tr><th>Beneficiary</th><th>Event Type</th><th>Date</th><th>Description</th><th>Amount</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  else if(accountantTab === 'income'){
+    const snap = await db.collection('extraIncome').where('status','==','pending').get();
+    let docs = [];
+    snap.forEach(d=> docs.push({ id:d.id, ...d.data() }));
+    docs.sort((a,b)=> (b.createdAtMillis||0) - (a.createdAtMillis||0));
+
+    let rows = '';
+    docs.forEach(inc=>{
+      rows += `<tr>
+        <td>${inc.description}</td>
+        <td class="amount">TZS ${fmtTZS(inc.amount)}</td>
+        <td><button class="btn btn-primary btn-sm" onclick="confirmIncome('${inc.id}')">Confirm & Add to Fund</button></td>
+      </tr>`;
+    });
+    if(!rows) rows = `<tr><td colspan="3" class="empty-state">No pending income reports.</td></tr>`;
+
+    const confirmedSnap = await db.collection('extraIncome').where('status','==','confirmed').orderBy('confirmedAtMillis','desc').limit(15).get();
+    let confirmedRows = '';
+    confirmedSnap.forEach(d=>{
+      const inc = d.data();
+      confirmedRows += `<tr>
+        <td>${inc.description}</td>
+        <td class="amount">TZS ${fmtTZS(inc.amount)}</td>
+        <td><span class="stamp stamp-paid">Confirmed</span></td>
+      </tr>`;
+    });
+    if(!confirmedRows) confirmedRows = `<tr><td colspan="3" class="empty-state">No confirmed income yet.</td></tr>`;
+
+    c.innerHTML = `
+      <div class="card">
+        <div class="section-title"><h3>Income Awaiting Confirmation</h3></div>
+        <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
+          These were submitted by the Chairman. Confirm only after the money has actually been received —
+          once confirmed, it's added to the fund balance and split as a bonus across all active members.
+        </p>
+        <table>
+          <thead><tr><th>Source / Description</th><th>Amount</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><h3>Recently Confirmed Income</h3></div>
+        <table>
+          <thead><tr><th>Source / Description</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>${confirmedRows}</tbody>
         </table>
       </div>
     `;
@@ -681,11 +832,11 @@ async function renderAccountantTabContent(){
     const { yearOptions, monthOptions } = yearMonthOptionsHTML();
     c.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>Download Ripoti (PDF)</h3></div>
+        <div class="section-title"><h3>Download Report (PDF)</h3></div>
 
         <div class="tabs-row" style="margin-bottom:18px;">
-          <button class="tab-btn ${reportMode==='monthly'?'active':''}" onclick="switchReportMode('monthly')">Ripoti ya Mwezi</button>
-          <button class="tab-btn ${reportMode==='annual'?'active':''}" onclick="switchReportMode('annual')">Ripoti ya Mwaka</button>
+          <button class="tab-btn ${reportMode==='monthly'?'active':''}" onclick="switchReportMode('monthly')">Monthly Report</button>
+          <button class="tab-btn ${reportMode==='annual'?'active':''}" onclick="switchReportMode('annual')">Annual Report</button>
         </div>
 
         <div id="reportModeContent"></div>
@@ -707,30 +858,30 @@ function renderReportModeContent(){
   if(reportMode === 'monthly'){
     box.innerHTML = `
       <p style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:16px;">
-        Summary ya mwezi: makusanyo, matumizi, na status ya malipo ya wanachama.
+        Monthly summary: collections, other income, expenses, and member payment status.
       </p>
       <div class="form-row">
         <div class="field">
-          <label>Mwezi</label>
+          <label>Month</label>
           <select id="repMonth">${monthOptions}</select>
         </div>
         <div class="field">
-          <label>Mwaka</label>
+          <label>Year</label>
           <select id="repYear">${yearOptions}</select>
         </div>
       </div>
-      <button class="btn btn-primary" onclick="generateMonthlyPDF()">Download PDF(Mwezi)</button>
+      <button class="btn btn-primary" onclick="generateMonthlyPDF()">Download PDF (Monthly)</button>
     `;
   } else {
     box.innerHTML = `
       <p style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:16px;">
-        Summary ya mwaka mzima kuanzia Januari hadi mwezi wa huu (kwa mwaka wa huu) au Januari–Desemba (Mwak uliyopita).
+        Full year summary from January to the current month (for this year) or January–December (previous years).
       </p>
       <div class="field" style="max-width:220px;">
-        <label>Mwaka</label>
+        <label>Year</label>
         <select id="repYearAnnual">${yearOptions}</select>
       </div>
-      <button class="btn btn-primary" onclick="generateAnnualPDF()">Download PDF(Mwaka)</button>
+      <button class="btn btn-primary" onclick="generateAnnualPDF()">Download PDF (Annual)</button>
     `;
   }
 }
@@ -743,7 +894,7 @@ async function recordContribution(){
   const amount = parseFloat(document.getElementById('recAmount').value);
 
   if(!memberId || !amount || amount <= 0){
-    msgBox.innerHTML = `<div class="msg msg-error">Jaza taarifa zote kwa usahihi.</div>`;
+    msgBox.innerHTML = `<div class="msg msg-error">Fill in all details correctly.</div>`;
     return;
   }
 
@@ -751,7 +902,7 @@ async function recordContribution(){
     const existing = await db.collection('contributions')
       .where('memberId','==',memberId).where('month','==',month).where('year','==',year).get();
     if(!existing.empty){
-      msgBox.innerHTML = `<div class="msg msg-error">Mwanachama huyu tayari ana rekodi ya malipo kwa mwezi huu.</div>`;
+      msgBox.innerHTML = `<div class="msg msg-error">This member already has a payment record for this month.</div>`;
       return;
     }
 
@@ -763,7 +914,7 @@ async function recordContribution(){
       recordedBy: currentUser.uid,
       recordedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    msgBox.innerHTML = `<div class="msg msg-ok">Malipo yamerekodiwa kikamilifu.</div>`;
+    msgBox.innerHTML = `<div class="msg msg-ok">Payment recorded successfully.</div>`;
     renderAccountantTabContent();
   }catch(err){
     msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
@@ -771,17 +922,17 @@ async function recordContribution(){
 }
 
 async function deleteContribution(contribId){
-  if(!confirm("Una uhakika unataka kufuta rekodi hii ya malipo? Kitendo hiki hakiwezi kurudishwa.")) return;
+  if(!confirm("Are you sure you want to delete this payment record? This action cannot be undone.")) return;
   try{
     await db.collection('contributions').doc(contribId).delete();
     renderAccountantTabContent();
   }catch(err){
-    alert("Failed to Delete: " + err.message);
+    alert("Failed to delete: " + err.message);
   }
 }
 
 async function payAssistance(reqId){
-  if(!confirm("Approve Payout")) return;
+  if(!confirm("Confirm that the payout funds have been given to the beneficiary?")) return;
   await db.collection('assistanceRequests').doc(reqId).update({
     status: 'paid',
     paidBy: currentUser.uid,
@@ -791,8 +942,26 @@ async function payAssistance(reqId){
   renderAccountantDashboard();
 }
 
+async function confirmIncome(incomeId){
+  if(!confirm("Confirm that this income has actually been received and should be added to the fund balance?")) return;
+  const activeMembers = allMembersCache.filter(m=>m.role==='member' && m.status==='active');
+  const membersCountAtTime = activeMembers.length || 1;
+  try{
+    await db.collection('extraIncome').doc(incomeId).update({
+      status: 'confirmed',
+      membersCountAtTime: membersCountAtTime,
+      confirmedBy: currentUser.uid,
+      confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      confirmedAtMillis: Date.now()
+    });
+    renderAccountantDashboard();
+  }catch(err){
+    alert("Failed to confirm: " + err.message);
+  }
+}
+
 /* =========================================================
-   PDF: RIPOTI YA MWEZI
+   PDF: MONTHLY REPORT
    ========================================================= */
 async function generateMonthlyPDF(){
   const month = parseInt(document.getElementById('repMonth').value);
@@ -800,9 +969,10 @@ async function generateMonthlyPDF(){
 
   const activeMembers = allMembersCache.filter(m=>m.role==='member' && m.status==='active');
 
-  const [contribSnap, allPaidReqSnap] = await Promise.all([
+  const [contribSnap, allPaidReqSnap, allConfirmedIncomeSnap] = await Promise.all([
     db.collection('contributions').where('month','==',month).where('year','==',year).get(),
-    db.collection('assistanceRequests').where('status','==','paid').get()
+    db.collection('assistanceRequests').where('status','==','paid').get(),
+    db.collection('extraIncome').where('status','==','confirmed').get()
   ]);
 
   const paidThisMonthMap = {};
@@ -828,10 +998,23 @@ async function generateMonthlyPDF(){
     }
   });
 
+  let totalIncomeAllTime = 0;
+  let incomeThisMonth = 0;
+  allConfirmedIncomeSnap.forEach(d=>{
+    const inc = d.data();
+    totalIncomeAllTime += Number(inc.amount||0);
+    if(inc.confirmedAt && inc.confirmedAt.toDate){
+      const dt = inc.confirmedAt.toDate();
+      if(dt.getMonth()+1 === month && dt.getFullYear() === year){
+        incomeThisMonth += Number(inc.amount||0);
+      }
+    }
+  });
+
   const allContribSnap = await db.collection('contributions').get();
   let totalCollectedAllTime = 0;
   allContribSnap.forEach(d=> totalCollectedAllTime += Number(d.data().amount||0));
-  const fundBalance = totalCollectedAllTime - totalUsedAllTime;
+  const fundBalance = totalCollectedAllTime + totalIncomeAllTime - totalUsedAllTime;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
@@ -843,7 +1026,7 @@ async function generateMonthlyPDF(){
   doc.setFontSize(10);
   doc.setFont("courier","normal");
   doc.text("Kidegembye Secondary School", pageWidth/2, 25, { align:'center' });
-  doc.text(`Ripoti ya Mwezi: ${MONTH_NAMES[month-1]} ${year}`, pageWidth/2, 31, { align:'center' });
+  doc.text(`Monthly Report: ${MONTH_NAMES[month-1]} ${year}`, pageWidth/2, 31, { align:'center' });
 
   doc.setLineWidth(0.4);
   doc.line(14, 36, pageWidth-14, 36);
@@ -851,20 +1034,24 @@ async function generateMonthlyPDF(){
   let y = 46;
   doc.setFont("courier","bold");
   doc.setFontSize(11);
-  doc.text("MAKUSANYO YA FEDHA", 14, y);
+  doc.text("FINANCIAL SUMMARY", 14, y);
   doc.setFont("courier","normal");
   doc.setFontSize(10);
   y += 8;
-  doc.text(`Makusanyo ya Mwezi Huu:`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedThisMonth)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`This Month's Collections:`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedThisMonth)}`, pageWidth-14, y, {align:'right'});
   y += 7;
-  doc.text(`Payout Mwezi Huu (${usedThisMonthCount}):`, 14, y); doc.text(`TZS ${fmtTZS(usedThisMonth)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Other Income This Month:`, 14, y); doc.text(`TZS ${fmtTZS(incomeThisMonth)}`, pageWidth-14, y, {align:'right'});
   y += 7;
-  doc.text(`Jumla ya Makusanyo:`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedAllTime)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Payouts This Month (${usedThisMonthCount}):`, 14, y); doc.text(`TZS ${fmtTZS(usedThisMonth)}`, pageWidth-14, y, {align:'right'});
   y += 7;
-  doc.text(`Jumla Matumizi:`, 14, y); doc.text(`TZS ${fmtTZS(totalUsedAllTime)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Total Collections (All-Time):`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedAllTime)}`, pageWidth-14, y, {align:'right'});
+  y += 7;
+  doc.text(`Total Other Income (All-Time):`, 14, y); doc.text(`TZS ${fmtTZS(totalIncomeAllTime)}`, pageWidth-14, y, {align:'right'});
+  y += 7;
+  doc.text(`Total Expenses (All-Time):`, 14, y); doc.text(`TZS ${fmtTZS(totalUsedAllTime)}`, pageWidth-14, y, {align:'right'});
   y += 7;
   doc.setFont("courier","bold");
-  doc.text(`SALIO LA MFUKO :`, 14, y); doc.text(`TZS ${fmtTZS(fundBalance)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`FUND BALANCE:`, 14, y); doc.text(`TZS ${fmtTZS(fundBalance)}`, pageWidth-14, y, {align:'right'});
 
   y += 12;
   doc.setLineWidth(0.2);
@@ -872,14 +1059,14 @@ async function generateMonthlyPDF(){
   y += 8;
 
   doc.setFontSize(11);
-  doc.text(`STATUS YA MALIPO YA WANACHAMA — ${MONTH_NAMES[month-1]} ${year}`, 14, y);
+  doc.text(`MEMBER PAYMENT STATUS — ${MONTH_NAMES[month-1]} ${year}`, 14, y);
   y += 8;
 
   doc.setFontSize(9);
   doc.setFont("courier","bold");
-  doc.text("Jina", 14, y);
+  doc.text("Name", 14, y);
   doc.text("Status", 130, y);
-  doc.text("Kiasi", pageWidth-14, y, {align:'right'});
+  doc.text("Amount", pageWidth-14, y, {align:'right'});
   y += 4;
   doc.line(14, y, pageWidth-14, y);
   y += 6;
@@ -889,7 +1076,7 @@ async function generateMonthlyPDF(){
     if(y > 275){ doc.addPage(); y = 20; }
     const paid = paidThisMonthMap.hasOwnProperty(m.id);
     doc.text(m.name.substring(0,32), 14, y);
-    doc.text(paid ? "PAID" : "NOT-PAID", 130, y);
+    doc.text(paid ? "PAID" : "UNPAID", 130, y);
     doc.text(paid ? `TZS ${fmtTZS(paidThisMonthMap[m.id])}` : "—", pageWidth-14, y, {align:'right'});
     y += 6;
   });
@@ -899,13 +1086,13 @@ async function generateMonthlyPDF(){
   doc.line(14, y, pageWidth-14, y);
   y += 8;
   doc.setFontSize(8);
-  doc.text(`Report generated by JohnsonDev85: ${new Date().toLocaleDateString('sw-TZ')} — Love is our language`, 14, y);
+  doc.text(`Report generated by JohnsonDev85: ${new Date().toLocaleDateString('en-GB')} — Love is our language`, 14, y);
 
-  doc.save(`Ripoti_Mfuko_${MONTH_NAMES[month-1]}_${year}.pdf`);
+  doc.save(`Fund_Report_${MONTH_NAMES[month-1]}_${year}.pdf`);
 }
 
 /* =========================================================
-   PDF: RIPOTI YA MWAKA (Januari - Mwezi wa Sasa / Desemba)
+   PDF: ANNUAL REPORT (January - Current Month / December)
    ========================================================= */
 async function generateAnnualPDF(){
   const year = parseInt(document.getElementById('repYearAnnual').value);
@@ -913,15 +1100,15 @@ async function generateAnnualPDF(){
 
   const activeMembers = allMembersCache.filter(m=>m.role==='member' && m.status==='active');
 
-  const [yearContribSnap, allPaidReqSnap, allContribSnap] = await Promise.all([
+  const [yearContribSnap, allPaidReqSnap, allContribSnap, allConfirmedIncomeSnap] = await Promise.all([
     db.collection('contributions').where('year','==',year).get(),
     db.collection('assistanceRequests').where('status','==','paid').get(),
-    db.collection('contributions').get()
+    db.collection('contributions').get(),
+    db.collection('extraIncome').where('status','==','confirmed').get()
   ]);
 
-  // Makusanyo ya mwaka (Jan - lastMonth) kwa mwanachama na jumla
-  const memberYearTotals = {};   // memberId -> jumla ya mwaka
-  const memberMonthsPaid = {};   // memberId -> idadi ya miezi aliyolipa (ndani ya Jan-lastMonth)
+  const memberYearTotals = {};
+  const memberMonthsPaid = {};
   let totalCollectedYear = 0;
 
   yearContribSnap.forEach(d=>{
@@ -933,7 +1120,6 @@ async function generateAnnualPDF(){
     }
   });
 
-  // Matumizi ya mwaka (paidAt ndani ya Jan-lastMonth ya mwaka huu)
   let totalUsedYear = 0;
   let usedYearCount = 0;
   let totalUsedAllTime = 0;
@@ -949,14 +1135,27 @@ async function generateAnnualPDF(){
     }
   });
 
+  let totalIncomeYear = 0;
+  let totalIncomeAllTime = 0;
+  allConfirmedIncomeSnap.forEach(d=>{
+    const inc = d.data();
+    totalIncomeAllTime += Number(inc.amount||0);
+    if(inc.confirmedAt && inc.confirmedAt.toDate){
+      const dt = inc.confirmedAt.toDate();
+      if(dt.getFullYear() === year && (dt.getMonth()+1) <= lastMonth){
+        totalIncomeYear += Number(inc.amount||0);
+      }
+    }
+  });
+
   let totalCollectedAllTime = 0;
   allContribSnap.forEach(d=> totalCollectedAllTime += Number(d.data().amount||0));
-  const fundBalance = totalCollectedAllTime - totalUsedAllTime;
+  const fundBalance = totalCollectedAllTime + totalIncomeAllTime - totalUsedAllTime;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const periodLabel = `Januari – ${MONTH_NAMES[lastMonth-1]} ${year}`;
+  const periodLabel = `January – ${MONTH_NAMES[lastMonth-1]} ${year}`;
 
   doc.setFont("courier", "bold");
   doc.setFontSize(14);
@@ -964,7 +1163,7 @@ async function generateAnnualPDF(){
   doc.setFontSize(10);
   doc.setFont("courier","normal");
   doc.text("Kidegembye Secondary School", pageWidth/2, 25, { align:'center' });
-  doc.text(`Ripoti ya Mwaka: ${periodLabel}`, pageWidth/2, 31, { align:'center' });
+  doc.text(`Annual Report: ${periodLabel}`, pageWidth/2, 31, { align:'center' });
 
   doc.setLineWidth(0.4);
   doc.line(14, 36, pageWidth-14, 36);
@@ -972,20 +1171,24 @@ async function generateAnnualPDF(){
   let y = 46;
   doc.setFont("courier","bold");
   doc.setFontSize(11);
-  doc.text("MAKUSANYO YA FEDHA", 14, y);
+  doc.text("FINANCIAL SUMMARY", 14, y);
   doc.setFont("courier","normal");
   doc.setFontSize(10);
   y += 8;
-  doc.text(`Jumla Makusanyo (${periodLabel}):`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedYear)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Total Collections (${periodLabel}):`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedYear)}`, pageWidth-14, y, {align:'right'});
   y += 7;
-  doc.text(`Current Payout  (${usedYearCount}):`, 14, y); doc.text(`TZS ${fmtTZS(totalUsedYear)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Other Income (${periodLabel}):`, 14, y); doc.text(`TZS ${fmtTZS(totalIncomeYear)}`, pageWidth-14, y, {align:'right'});
   y += 7;
-  doc.text(`Jumla Makusanyo:`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedAllTime)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Payouts (${usedYearCount}):`, 14, y); doc.text(`TZS ${fmtTZS(totalUsedYear)}`, pageWidth-14, y, {align:'right'});
   y += 7;
-  doc.text(`Jumla Matumizi:`, 14, y); doc.text(`TZS ${fmtTZS(totalUsedAllTime)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`Total Collections (All-Time):`, 14, y); doc.text(`TZS ${fmtTZS(totalCollectedAllTime)}`, pageWidth-14, y, {align:'right'});
+  y += 7;
+  doc.text(`Total Other Income (All-Time):`, 14, y); doc.text(`TZS ${fmtTZS(totalIncomeAllTime)}`, pageWidth-14, y, {align:'right'});
+  y += 7;
+  doc.text(`Total Expenses (All-Time):`, 14, y); doc.text(`TZS ${fmtTZS(totalUsedAllTime)}`, pageWidth-14, y, {align:'right'});
   y += 7;
   doc.setFont("courier","bold");
-  doc.text(`SALIO LA MFUKO:`, 14, y); doc.text(`TZS ${fmtTZS(fundBalance)}`, pageWidth-14, y, {align:'right'});
+  doc.text(`FUND BALANCE:`, 14, y); doc.text(`TZS ${fmtTZS(fundBalance)}`, pageWidth-14, y, {align:'right'});
 
   y += 12;
   doc.setLineWidth(0.2);
@@ -993,14 +1196,14 @@ async function generateAnnualPDF(){
   y += 8;
 
   doc.setFontSize(11);
-  doc.text(`MCHANGANUO WA WANACHAMA — ${periodLabel}`, 14, y);
+  doc.text(`MEMBER BREAKDOWN — ${periodLabel}`, 14, y);
   y += 8;
 
   doc.setFontSize(9);
   doc.setFont("courier","bold");
-  doc.text("Jina", 14, y);
-  doc.text("Miezi Aliyolipa", 110, y);
-  doc.text("Jumla Alichochangia", pageWidth-14, y, {align:'right'});
+  doc.text("Name", 14, y);
+  doc.text("Months Paid", 110, y);
+  doc.text("Total Contributed", pageWidth-14, y, {align:'right'});
   y += 4;
   doc.line(14, y, pageWidth-14, y);
   y += 6;
@@ -1021,7 +1224,7 @@ async function generateAnnualPDF(){
   doc.line(14, y, pageWidth-14, y);
   y += 8;
   doc.setFontSize(8);
-  doc.text(`Report generated by JohnsonDev85: ${new Date().toLocaleDateString('sw-TZ')} — Love is our language`, 14, y);
+  doc.text(`Report generated by JohnsonDev85: ${new Date().toLocaleDateString('en-GB')} — Love is our language`, 14, y);
 
-  doc.save(`Ripoti_Mwaka_${year}.pdf`);
+  doc.save(`Annual_Report_${year}.pdf`);
 }
