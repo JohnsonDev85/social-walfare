@@ -19,7 +19,7 @@ const db = firebase.firestore();
 const MONTHLY_AMOUNT = 5000;
 const ASSISTANCE_AMOUNT = 150000;
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const EVENT_TYPES = { msiba: "Bereavement", kuuguza: "Illness/Care", mtoto: "Childbirth" };
+const EVENT_TYPES = { msiba: "Msiba", kuuguza: "Kuuguza", mtoto: "Kupata mtoto" };
 
 let currentUser = null;
 let currentProfile = null;
@@ -124,13 +124,13 @@ auth.onAuthStateChanged(async (user)=>{
     currentUser = user;
     const doc = await db.collection('members').doc(user.uid).get();
     if(!doc.exists){
-      showAuthMsg("Contact the system administrator, your information is not in the system.", "error");
+      showAuthMsg("Wasiliana na  system administrator, taarifa zako hazipo kwenye system.", "error");
       auth.signOut();
       return;
     }
     currentProfile = doc.data();
     if(currentProfile.status === 'removed'){
-      showAuthMsg("Your membership has been removed from the fund. Contact the Chairman.", "error");
+      showAuthMsg("Your membership has been removed from the Social. Contact the Chairman.", "error");
       auth.signOut();
       return;
     }
@@ -246,11 +246,11 @@ async function renderMemberDashboard(){
         <div class="value">TZS ${fmtTZS(totalContributed)}</div>
       </div>
       <div class="stat-card neg">
-        <div class="label">Payout Used</div>
+        <div class="label">Payout Used(Kiasi kilichotumika)</div>
         <div class="value">TZS ${fmtTZS(Math.round(totalUsedShare))}</div>
       </div>
       <div class="stat-card pos">
-        <div class="label">Income Bonus</div>
+        <div class="label">Income Bonus(E.g pesa kutoka kwa HoS)</div>
         <div class="value">TZS ${fmtTZS(Math.round(incomeBonus))}</div>
       </div>
       <div class="stat-card ${remaining>=0?'pos':'neg'}">
@@ -373,8 +373,8 @@ async function renderChairmanTabContent(){
           <div class="field">
             <label>Event Type</label>
             <select id="reqType">
-              <option value="msiba">Bereavement</option>
-              <option value="kuuguza">Illness/Care</option>
+              <option value="msiba">Msiba</option>
+              <option value="kuuguza">Kuuguza/Ugonjwa</option>
               <option value="mtoto">Childbirth</option>
             </select>
           </div>
@@ -391,7 +391,7 @@ async function renderChairmanTabContent(){
         </div>
         <div class="field">
           <label>Description</label>
-          <textarea id="reqDesc" rows="3" placeholder="Brief description of the event..."></textarea>
+          <textarea id="reqDesc" rows="3" placeholder="Maelezo mafupi ya tukio..."></textarea>
         </div>
         <button class="btn btn-primary" onclick="submitAssistanceRequest()">Send Request to Accountant</button>
       </div>
@@ -439,14 +439,14 @@ async function renderChairmanTabContent(){
       <div class="card">
         <div class="section-title"><h3>Report New Income</h3></div>
         <p style="font-size:0.82rem; color:var(--ink-soft); margin-bottom:14px;">
-          Use this when the fund receives money from a source other than regular monthly contributions
+          Tumia hii endapo chanzo kimepatikana tofauti na michango ya kila mwezi ya members
           (e.g. a donation, top-up, or one-off gift). Once submitted, the Accountant must confirm it
           before it's added to the fund balance.
         </p>
         <div id="incomeMsg"></div>
         <div class="field">
           <label>Source of Income</label>
-          <textarea id="incomeSource" rows="3" placeholder="e.g. Donation from alumni association, staff welfare top-up..."></textarea>
+          <textarea id="incomeSource" rows="3" placeholder="e.g. Donation from Head of School, staff welfare top-up..."></textarea>
         </div>
         <div class="field" style="max-width:220px;">
           <label>Amount (TZS)</label>
@@ -585,7 +585,7 @@ async function submitAssistanceRequest(){
   const desc = document.getElementById('reqDesc').value.trim();
 
   if(!memberId || !eventDate){
-    msgBox.innerHTML = `<div class="msg msg-error">Select a member and event date.</div>`;
+    msgBox.innerHTML = `<div class="msg msg-error">Select Mwanachama na Tarehe ya tukio kutokea.</div>`;
     return;
   }
 
@@ -858,7 +858,7 @@ function renderReportModeContent(){
   if(reportMode === 'monthly'){
     box.innerHTML = `
       <p style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:16px;">
-        Monthly summary: collections, other income, expenses, and member payment status.
+        Monthly summary: makusanyo, other income, matumizi, and member payment status.
       </p>
       <div class="form-row">
         <div class="field">
@@ -902,7 +902,7 @@ async function recordContribution(){
     const existing = await db.collection('contributions')
       .where('memberId','==',memberId).where('month','==',month).where('year','==',year).get();
     if(!existing.empty){
-      msgBox.innerHTML = `<div class="msg msg-error">This member already has a payment record for this month.</div>`;
+      msgBox.innerHTML = `<div class="msg msg-error">Mwanachama huyu ameshalipia kwa mwezi huu.</div>`;
       return;
     }
 
