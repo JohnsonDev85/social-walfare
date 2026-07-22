@@ -17,7 +17,7 @@ const db = firebase.firestore();
    CONSTANTS
    ========================================================= */
 const MONTHLY_AMOUNT = 5000;
-const ASSISTANCE_AMOUNT = 100000;
+const ASSISTANCE_AMOUNT = 150000;
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const EVENT_TYPES = { msiba: "Msiba", kuuguza: "Kuuguza", mtoto: "Kupata mtoto" };
 
@@ -208,18 +208,22 @@ async function renderMemberDashboard(){
   let totalContributed = 0;
   allContribSnap.forEach(d=> totalContributed += Number(d.data().amount||0));
 
+  // Tumia idadi ya wanachama HAI ya SASA (siyo ile ya wakati tukio lilipotokea),
+  // ili mzigo wa matukio ya nyuma ugawanywe upya kila wanachama wanapoongezeka/kupungua.
+  const currentActiveCountSnap = await db.collection('members')
+    .where('role','==','member').where('status','==','active').get();
+  const currentActiveCount = currentActiveCountSnap.size || 1;
+
   let totalUsedShare = 0;
   allPaidReqSnap.forEach(d=>{
     const req = d.data();
-    const cnt = req.membersCountAtTime || 1;
-    totalUsedShare += (ASSISTANCE_AMOUNT / cnt);
+    totalUsedShare += (Number(req.amount||ASSISTANCE_AMOUNT) / currentActiveCount);
   });
 
   let incomeBonus = 0;
   allConfirmedIncomeSnap.forEach(d=>{
     const inc = d.data();
-    const cnt = inc.membersCountAtTime || 1;
-    incomeBonus += (Number(inc.amount||0) / cnt);
+    incomeBonus += (Number(inc.amount||0) / currentActiveCount);
   });
 
   const remaining = totalContributed - totalUsedShare + incomeBonus;
