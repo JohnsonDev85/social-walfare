@@ -26,7 +26,7 @@ let membersLoadedOnce = false;
    CONSTANTS
    ========================================================= */
 const MONTHLY_AMOUNT = 5000;
-const ASSISTANCE_AMOUNT = 150000;
+const ASSISTANCE_AMOUNT = 100000;
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const EVENT_TYPES = { msiba: "Msiba", kuuguza: "Kuuguza", mtoto: "Kupata mtoto" };
 
