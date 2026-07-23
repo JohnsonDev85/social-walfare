@@ -30,6 +30,13 @@ const ASSISTANCE_AMOUNT = 100000;
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const EVENT_TYPES = { msiba: "Msiba", kuuguza: "Kuuguza", mtoto: "Kupata mtoto" };
 
+// Mfuko ulianza Novemba 2025 na unaishia Novemba 2026
+const FUND_START_YEAR = 2025;
+const FUND_START_MONTH = 11; // Novemba
+const FUND_END_YEAR = 2026;
+const FUND_END_MONTH = 11; // Novemba
+const FUND_YEARS = [2025, 2026, 2027];
+
 let currentUser = null;
 let currentProfile = null;
 let allMembersCache = [];
@@ -191,11 +198,33 @@ function fmtTZS(n){
   return Number(n||0).toLocaleString('en-US');
 }
 function currentYear(){ return new Date().getFullYear(); }
+
+// Miaka ya dropdown sasa ni 2025 na 2026 tu (kipindi cha mfuko)
 function yearMonthOptionsHTML(){
-  const yearOptions = [currentYear()-1, currentYear(), currentYear()+1]
-    .map(y=>`<option value="${y}" ${y===currentYear()?'selected':''}>${y}</option>`).join('');
+  const nowYear = currentYear();
+  const defaultYear = FUND_YEARS.includes(nowYear) ? nowYear : FUND_END_YEAR;
+  const yearOptions = FUND_YEARS
+    .map(y=>`<option value="${y}" ${y===defaultYear?'selected':''}>${y}</option>`).join('');
   const monthOptions = MONTH_NAMES.map((mn,i)=>`<option value="${i+1}" ${i+1===new Date().getMonth()+1?'selected':''}>${mn}</option>`).join('');
   return { yearOptions, monthOptions };
+}
+
+// Mwezi wa mwisho wa kipindi cha mfuko unaotumika kwa Ripoti ya Mwaka (Novemba 2025 - Novemba 2026)
+function getFundPeriodEnd(){
+  const now = new Date();
+  const nowVal = now.getFullYear()*12 + (now.getMonth()+1);
+  const startVal = FUND_START_YEAR*12 + FUND_START_MONTH;
+  const endVal = FUND_END_YEAR*12 + FUND_END_MONTH;
+  const cappedVal = Math.min(Math.max(nowVal, startVal), endVal);
+  return { year: Math.floor((cappedVal-1)/12), month: ((cappedVal-1)%12)+1 };
+}
+
+// Je tarehe fulani (mwezi/mwaka) iko ndani ya kipindi cha mfuko (Nov2025 - periodEnd)?
+function isInFundPeriod(month, year, periodEnd){
+  const val = year*12 + month;
+  const startVal = FUND_START_YEAR*12 + FUND_START_MONTH;
+  const endVal = periodEnd.year*12 + periodEnd.month;
+  return val >= startVal && val <= endVal;
 }
 
 /* =========================================================
@@ -864,7 +893,7 @@ async function renderAccountantTabContent(){
 
         <div class="tabs-row" style="margin-bottom:18px;">
           <button class="tab-btn ${reportMode==='monthly'?'active':''}" onclick="switchReportMode('monthly')">Monthly Report</button>
-          <button class="tab-btn ${reportMode==='annual'?'active':''}" onclick="switchReportMode('annual')">Annual Report</button>
+          <button class="tab-btn ${reportMode==='annual'?'active':''}" onclick="switchReportMode('annual')">Fund Year Report</button>
         </div>
 
         <div id="reportModeContent"></div>
@@ -901,15 +930,13 @@ function renderReportModeContent(){
       <button class="btn btn-primary" onclick="generateMonthlyPDF()">Download PDF (Monthly)</button>
     `;
   } else {
+    const periodEnd = getFundPeriodEnd();
     box.innerHTML = `
       <p style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:16px;">
-        Full year summary from January to the current month (for this year) or January–December (previous years).
+        Fund Year period: <strong>${MONTH_NAMES[FUND_START_MONTH-1]} ${FUND_START_YEAR} – ${MONTH_NAMES[periodEnd.month-1]} ${periodEnd.year}</strong>.
+        This report covers the entire life of the fund so far.
       </p>
-      <div class="field" style="max-width:220px;">
-        <label>Year</label>
-        <select id="repYearAnnual">${yearOptions}</select>
-      </div>
-      <button class="btn btn-primary" onclick="generateAnnualPDF()">Download PDF (Annual)</button>
+      <button class="btn btn-primary" onclick="generateAnnualPDF()">Download PDF (Fund Year)</button>
     `;
   }
 }
@@ -1120,16 +1147,17 @@ async function generateMonthlyPDF(){
 }
 
 /* =========================================================
-   PDF: ANNUAL REPORT (January - Current Month / December)
+   PDF: FUND YEAR REPORT (Novemba 2025 - Novemba 2026)
    ========================================================= */
 async function generateAnnualPDF(){
-  const year = parseInt(document.getElementById('repYearAnnual').value);
-  const lastMonth = (year === currentYear()) ? (new Date().getMonth()+1) : 12;
+  const periodEnd = getFundPeriodEnd();
+  const periodLabel = `${MONTH_NAMES[FUND_START_MONTH-1]} ${FUND_START_YEAR} – ${MONTH_NAMES[periodEnd.month-1]} ${periodEnd.year}`;
 
   const activeMembers = allMembersCache.filter(m=>m.role==='member' && m.status==='active');
 
-  const [yearContribSnap, allPaidReqSnap, allContribSnap, allConfirmedIncomeSnap] = await Promise.all([
-    db.collection('contributions').where('year','==',year).get(),
+  const [contrib2025Snap, contrib2026Snap, allPaidReqSnap, allContribSnap, allConfirmedIncomeSnap] = await Promise.all([
+    db.collection('contributions').where('year','==',2025).get(),
+    db.collection('contributions').where('year','==',2026).get(),
     db.collection('assistanceRequests').where('status','==','paid').get(),
     db.collection('contributions').get(),
     db.collection('extraIncome').where('status','==','confirmed').get()
@@ -1139,14 +1167,19 @@ async function generateAnnualPDF(){
   const memberMonthsPaid = {};
   let totalCollectedYear = 0;
 
-  yearContribSnap.forEach(d=>{
+  const applyContribDoc = (d)=>{
     const data = d.data();
-    if(data.month <= lastMonth){
+    if(isInFundPeriod(data.month, data.year, periodEnd)){
       totalCollectedYear += Number(data.amount||0);
       memberYearTotals[data.memberId] = (memberYearTotals[data.memberId]||0) + Number(data.amount||0);
       memberMonthsPaid[data.memberId] = (memberMonthsPaid[data.memberId]||0) + 1;
     }
-  });
+  };
+  contrib2025Snap.forEach(applyContribDoc);
+  contrib2026Snap.forEach(applyContribDoc);
+
+  const periodStartDate = new Date(FUND_START_YEAR, FUND_START_MONTH-1, 1);
+  const periodEndDate = new Date(periodEnd.year, periodEnd.month, 0, 23, 59, 59);
 
   let totalUsedYear = 0;
   let usedYearCount = 0;
@@ -1156,7 +1189,7 @@ async function generateAnnualPDF(){
     totalUsedAllTime += Number(r.amount||0);
     if(r.paidAt && r.paidAt.toDate){
       const dt = r.paidAt.toDate();
-      if(dt.getFullYear() === year && (dt.getMonth()+1) <= lastMonth){
+      if(dt >= periodStartDate && dt <= periodEndDate){
         totalUsedYear += Number(r.amount||0);
         usedYearCount++;
       }
@@ -1170,7 +1203,7 @@ async function generateAnnualPDF(){
     totalIncomeAllTime += Number(inc.amount||0);
     if(inc.confirmedAt && inc.confirmedAt.toDate){
       const dt = inc.confirmedAt.toDate();
-      if(dt.getFullYear() === year && (dt.getMonth()+1) <= lastMonth){
+      if(dt >= periodStartDate && dt <= periodEndDate){
         totalIncomeYear += Number(inc.amount||0);
       }
     }
@@ -1183,7 +1216,6 @@ async function generateAnnualPDF(){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const periodLabel = `January – ${MONTH_NAMES[lastMonth-1]} ${year}`;
 
   doc.setFont("courier", "bold");
   doc.setFontSize(14);
@@ -1191,7 +1223,7 @@ async function generateAnnualPDF(){
   doc.setFontSize(10);
   doc.setFont("courier","normal");
   doc.text("Kidegembye Secondary School", pageWidth/2, 25, { align:'center' });
-  doc.text(`Annual Report: ${periodLabel}`, pageWidth/2, 31, { align:'center' });
+  doc.text(`Fund Year Report: ${periodLabel}`, pageWidth/2, 31, { align:'center' });
 
   doc.setLineWidth(0.4);
   doc.line(14, 36, pageWidth-14, 36);
@@ -1242,7 +1274,7 @@ async function generateAnnualPDF(){
     const monthsPaid = memberMonthsPaid[m.id] || 0;
     const yearTotal = memberYearTotals[m.id] || 0;
     doc.text(m.name.substring(0,30), 14, y);
-    doc.text(`${monthsPaid} / ${lastMonth}`, 110, y);
+    doc.text(`${monthsPaid}`, 110, y);
     doc.text(`TZS ${fmtTZS(yearTotal)}`, pageWidth-14, y, {align:'right'});
     y += 6;
   });
@@ -1254,5 +1286,5 @@ async function generateAnnualPDF(){
   doc.setFontSize(8);
   doc.text(`Report generated by JohnsonDev85: ${new Date().toLocaleDateString('en-GB')} — Love is our language`, 14, y);
 
-  doc.save(`Annual_Report_${year}.pdf`);
+  doc.save(`Fund_Year_Report_${FUND_START_YEAR}_${periodEnd.year}.pdf`);
 }
