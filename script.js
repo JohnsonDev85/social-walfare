@@ -35,7 +35,7 @@ const FUND_START_YEAR = 2025;
 const FUND_START_MONTH = 11; // Novemba
 const FUND_END_YEAR = 2026;
 const FUND_END_MONTH = 11; // Novemba
-const FUND_YEARS = [2025, 2026, 2027];
+const FUND_YEARS = [2025, 2026];
 
 let currentUser = null;
 let currentProfile = null;
