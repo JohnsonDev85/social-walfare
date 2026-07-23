@@ -13,6 +13,15 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// Wezesha local caching - data iliyosomwa mara moja inaonekana papo hapo mara zifuatazo
+db.enablePersistence().catch((err)=>{
+  console.warn("Offline persistence haikuwezekana: ", err.code);
+});
+
+// Cache za muhtasari - kuepuka kusoma data ile ile mara kwa mara bila sababu
+let cachedFundSummary = null;
+let membersLoadedOnce = false;
+
 /* =========================================================
    CONSTANTS
    ========================================================= */
@@ -169,9 +178,13 @@ function enterApp(){
 /* =========================================================
    HELPERS
    ========================================================= */
-async function fetchAllMembers(){
+async function fetchAllMembers(forceRefresh){
+  if(membersLoadedOnce && !forceRefresh){
+    return allMembersCache; // tumia cache - hakuna haja ya kusoma tena
+  }
   const snap = await db.collection('members').orderBy('name').get();
   allMembersCache = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+  membersLoadedOnce = true;
   return allMembersCache;
 }
 function fmtTZS(n){
@@ -195,11 +208,12 @@ async function renderMemberDashboard(){
   const uid = currentUser.uid;
   const year = currentYear();
 
-  const [contribSnap, allPaidReqSnap, allContribSnap, allConfirmedIncomeSnap] = await Promise.all([
+  const [contribSnap, allPaidReqSnap, allContribSnap, allConfirmedIncomeSnap, currentActiveCountSnap] = await Promise.all([
     db.collection('contributions').where('memberId','==',uid).where('year','==',year).get(),
     db.collection('assistanceRequests').where('status','==','paid').get(),
     db.collection('contributions').where('memberId','==',uid).get(),
-    db.collection('extraIncome').where('status','==','confirmed').get()
+    db.collection('extraIncome').where('status','==','confirmed').get(),
+    db.collection('members').where('role','==','member').where('status','==','active').get()
   ]);
 
   const paidMonths = {};
@@ -210,8 +224,6 @@ async function renderMemberDashboard(){
 
   // Tumia idadi ya wanachama HAI ya SASA (siyo ile ya wakati tukio lilipotokea),
   // ili mzigo wa matukio ya nyuma ugawanywe upya kila wanachama wanapoongezeka/kupungua.
-  const currentActiveCountSnap = await db.collection('members')
-    .where('role','==','member').where('status','==','active').get();
   const currentActiveCount = currentActiveCountSnap.size || 1;
 
   let totalUsedShare = 0;
@@ -277,10 +289,12 @@ async function renderMemberDashboard(){
    ========================================================= */
 let chairmanTab = 'members';
 
-async function renderChairmanDashboard(){
+async function renderChairmanDashboard(forceRefresh){
   const body = document.getElementById('appBody');
-  body.innerHTML = `<div class="empty-state">Loading Chairman Dashboard...</div>`;
-  await fetchAllMembers();
+  if(!membersLoadedOnce || forceRefresh){
+    body.innerHTML = `<div class="empty-state">Loading Chairman Dashboard...</div>`;
+  }
+  await fetchAllMembers(forceRefresh);
 
   body.innerHTML = `
     <div class="section-title">
@@ -303,7 +317,7 @@ async function renderChairmanDashboard(){
 
 function switchChairmanTab(tab){
   chairmanTab = tab;
-  renderChairmanDashboard();
+  renderChairmanDashboard(false); // usisome members tena - tumia cache
 }
 
 async function renderChairmanTabContent(){
@@ -572,12 +586,12 @@ async function loadChairmanMonthlyView(){
 async function removeMember(memberId){
   if(!confirm("Are you sure you want to remove this member from the fund?")) return;
   await db.collection('members').doc(memberId).update({ status:'removed' });
-  await fetchAllMembers();
+  await fetchAllMembers(true); // forceRefresh - data halisi imebadilika
   renderChairmanTabContent();
 }
 async function restoreMember(memberId){
   await db.collection('members').doc(memberId).update({ status:'active' });
-  await fetchAllMembers();
+  await fetchAllMembers(true); // forceRefresh
   renderChairmanTabContent();
 }
 
@@ -633,24 +647,34 @@ async function deleteAssistanceRequest(reqId){
 let accountantTab = 'record';
 let reportMode = 'monthly'; // 'monthly' | 'annual'
 
-async function renderAccountantDashboard(){
+async function renderAccountantDashboard(forceRefresh){
   const body = document.getElementById('appBody');
-  body.innerHTML = `<div class="empty-state">Loading Accountant Dashboard...</div>`;
-  await fetchAllMembers();
+  if(!cachedFundSummary || forceRefresh){
+    body.innerHTML = `<div class="empty-state">Loading Accountant Dashboard...</div>`;
+  }
+  await fetchAllMembers(forceRefresh);
 
-  // --- Fund Summary (Total Contributions / Income / Payouts / Balance) ---
-  const [allContribSnapTop, allPaidReqSnapTop, allConfirmedIncomeSnapTop] = await Promise.all([
-    db.collection('contributions').get(),
-    db.collection('assistanceRequests').where('status','==','paid').get(),
-    db.collection('extraIncome').where('status','==','confirmed').get()
-  ]);
-  let totalContributedAll = 0;
-  allContribSnapTop.forEach(d=> totalContributedAll += Number(d.data().amount||0));
-  let totalPaidOutAll = 0;
-  allPaidReqSnapTop.forEach(d=> totalPaidOutAll += Number(d.data().amount||0));
-  let totalIncomeAll = 0;
-  allConfirmedIncomeSnapTop.forEach(d=> totalIncomeAll += Number(d.data().amount||0));
-  const fundBalanceTop = totalContributedAll + totalIncomeAll - totalPaidOutAll;
+  if(!cachedFundSummary || forceRefresh){
+    // --- Fund Summary (Total Contributions / Income / Payouts / Balance) ---
+    const [allContribSnapTop, allPaidReqSnapTop, allConfirmedIncomeSnapTop] = await Promise.all([
+      db.collection('contributions').get(),
+      db.collection('assistanceRequests').where('status','==','paid').get(),
+      db.collection('extraIncome').where('status','==','confirmed').get()
+    ]);
+    let totalContributedAll = 0;
+    allContribSnapTop.forEach(d=> totalContributedAll += Number(d.data().amount||0));
+    let totalPaidOutAll = 0;
+    allPaidReqSnapTop.forEach(d=> totalPaidOutAll += Number(d.data().amount||0));
+    let totalIncomeAll = 0;
+    allConfirmedIncomeSnapTop.forEach(d=> totalIncomeAll += Number(d.data().amount||0));
+    cachedFundSummary = {
+      totalContributedAll,
+      totalPaidOutAll,
+      totalIncomeAll,
+      fundBalanceTop: totalContributedAll + totalIncomeAll - totalPaidOutAll
+    };
+  }
+  const { totalContributedAll, totalPaidOutAll, totalIncomeAll, fundBalanceTop } = cachedFundSummary;
 
   body.innerHTML = `
     <div class="section-title">
@@ -691,7 +715,7 @@ async function renderAccountantDashboard(){
 
 function switchAccountantTab(tab){
   accountantTab = tab;
-  renderAccountantDashboard();
+  renderAccountantDashboard(false); // tumia cache - usisome summary tena
 }
 
 async function renderAccountantTabContent(){
@@ -919,7 +943,7 @@ async function recordContribution(){
       recordedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     msgBox.innerHTML = `<div class="msg msg-ok">Payment recorded successfully.</div>`;
-    renderAccountantTabContent();
+    renderAccountantDashboard(true); // fedha zimebadilika - soma upya
   }catch(err){
     msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
   }
@@ -929,7 +953,7 @@ async function deleteContribution(contribId){
   if(!confirm("Are you sure you want to delete this payment record? This action cannot be undone.")) return;
   try{
     await db.collection('contributions').doc(contribId).delete();
-    renderAccountantTabContent();
+    renderAccountantDashboard(true); // fedha zimebadilika - soma upya
   }catch(err){
     alert("Failed to delete: " + err.message);
   }
@@ -943,7 +967,7 @@ async function payAssistance(reqId){
     paidAt: firebase.firestore.FieldValue.serverTimestamp(),
     paidAtMillis: Date.now()
   });
-  renderAccountantDashboard();
+  renderAccountantDashboard(true); // fedha zimebadilika - soma upya
 }
 
 async function confirmIncome(incomeId){
@@ -958,7 +982,7 @@ async function confirmIncome(incomeId){
       confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
       confirmedAtMillis: Date.now()
     });
-    renderAccountantDashboard();
+    renderAccountantDashboard(true); // fedha zimebadilika - soma upya
   }catch(err){
     alert("Failed to confirm: " + err.message);
   }
