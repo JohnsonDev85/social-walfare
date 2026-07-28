@@ -457,14 +457,14 @@ async function renderMemberKikobaContent(container){
     <div class="grid grid-3" style="margin-bottom:24px;">
       <div class="stat-card">
         <div class="label">Jumla ya Hisa ulizonazo</div>
-        <div class="value">${myTotalShares} shares</div>
+        <div class="value">${myTotalShares} hisa</div>
       </div>
       <div class="stat-card pos">
-        <div class="label">Current Value Per Hisa</div>
+        <div class="label">Thamani ya Hisa moja mpaka sasa</div>
         <div class="value">TZS ${fmtTZS(Math.round(currentShareValue))}</div>
       </div>
       <div class="stat-card pos">
-        <div class="label">Total Value (Hisa + Faida)</div>
+        <div class="label">Gawio lako(faida)</div>
         <div class="value">TZS ${fmtTZS(Math.round(myTotalValue))}</div>
       </div>
     </div>
@@ -478,7 +478,7 @@ async function renderMemberKikobaContent(container){
     </div>
 
     <div class="card">
-      <div class="section-title"><h3>Historia ya Mikopo yako (Kikoba)</h3></div>
+      <div class="section-title"><h3>History ya Mikopo yako uliokopa(Kikoba)</h3></div>
       <table>
         <thead><tr><th>Month</th><th>Kiasi ulichokopa</th><th>Ulicholipa</th><th>Deni linalodaiwa</th><th>Hali</th></tr></thead>
         <tbody>${loanRows}</tbody>
@@ -1729,7 +1729,6 @@ async function confirmIncome(incomeId){
     alert("Failed to confirm: " + err.message);
   }
 }
-
 /* =========================================================
    ACCOUNTANT — KIKOBA SUB-TABS
    ========================================================= */
@@ -1791,6 +1790,15 @@ async function renderKikobaAccountantSubContent(){
     const kMembers = allMembersCache.filter(m=> isKikobaActiveMember(m.id));
     const options = kMembers.map(m=>`<option value="${m.id}">${escapeHTML(m.name)}</option>`).join('');
     const { yearOptions, monthOptions } = yearMonthOptionsHTML();
+
+    const now = new Date();
+    if(typeof kikobaShareFilterMonth === 'undefined' || kikobaShareFilterMonth === null) kikobaShareFilterMonth = now.getMonth()+1;
+    if(typeof kikobaShareFilterYear === 'undefined' || kikobaShareFilterYear === null) kikobaShareFilterYear = now.getFullYear();
+
+    const filterMonthOptions = ['<option value="all">Miezi Yote</option>']
+      .concat(KIKOBA_MONTH_NAMES_SW.map((name,i)=>`<option value="${i+1}" ${kikobaShareFilterMonth==(i+1)?'selected':''}>${name}</option>`))
+      .join('');
+
     box.innerHTML = `
       <div class="card">
         <div class="section-title"><h3>Record Manunuzi ya Hisa</h3></div>
@@ -1809,7 +1817,33 @@ async function renderKikobaAccountantSubContent(){
         </p>
         <button class="btn btn-primary" onclick="recordKikobaShare()">Save Manunuzi ya Hisa</button>
       </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="section-title"><h3>Manunuzi ya Hisa Yaliyorekodiwa</h3></div>
+        <div class="form-row">
+          <div class="field">
+            <label>Chuja kwa Mwezi</label>
+            <select id="kshareFilterMonth" onchange="onKikobaShareFilterChange()">${filterMonthOptions}</select>
+          </div>
+          <div class="field">
+            <label>Mwaka</label>
+            <select id="kshareFilterYear" onchange="onKikobaShareFilterChange()">${yearOptions}</select>
+          </div>
+        </div>
+        <div class="form-row" style="margin:6px 0 16px; align-items:flex-end;">
+          <div class="field" style="max-width:260px;">
+            <label>Mwaka wa Fedha (kwa PDF)</label>
+            <select id="kshareFiscalYear">${kikobaFiscalYearOptionsHTML()}</select>
+          </div>
+          <div class="field" style="flex:0;">
+            <button class="btn btn-outline" onclick="downloadKikobaSharesYearlyPDF()">📄 Pakua PDF — Mwaka wa Fedha</button>
+          </div>
+        </div>
+        <div id="kshareRecordsTable">Inapakia...</div>
+      </div>
     `;
+
+    await renderKikobaShareRecordsTable();
   }
 
   else if(kikobaAccountantSubTab === 'kdisburse'){
@@ -1913,6 +1947,150 @@ async function recordKikobaShare(){
   }
 }
 
+const KIKOBA_MONTH_NAMES_SW = ['Januari','Februari','Machi','Aprili','Mei','Juni','Julai','Agosti','Septemba','Oktoba','Novemba','Desemba'];
+let kikobaShareFilterMonth = new Date().getMonth()+1;
+let kikobaShareFilterYear = new Date().getFullYear();
+
+// Mwaka wa Fedha: Novemba (mwaka X) mpaka Novemba (mwaka X+1), miezi 13 jumla.
+let kikobaShareFiscalYearStart = (function(){
+  const now = new Date();
+  const m = now.getMonth()+1; // 1-12
+  const y = now.getFullYear();
+  return (m >= 11) ? y : y - 1; // ikiwa tupo Nov/Dec, mwaka wa fedha unaanza mwaka huu; vinginevyo ulianza mwaka jana
+})();
+
+function kikobaFiscalYearOptionsHTML(){
+  const currentGuess = (function(){
+    const now = new Date();
+    const m = now.getMonth()+1, y = now.getFullYear();
+    return (m >= 11) ? y : y - 1;
+  })();
+  const startYears = [];
+  for(let y = currentGuess - 3; y <= currentGuess + 1; y++) startYears.push(y);
+  return startYears.map(y=>{
+    const selected = (y === kikobaShareFiscalYearStart) ? 'selected' : '';
+    return `<option value="${y}" ${selected}>${y}/${y+1}  (Nov ${y} \u2013 Nov ${y+1})</option>`;
+  }).join('');
+}
+
+function onKikobaShareFilterChange(){
+  const monthSel = document.getElementById('kshareFilterMonth');
+  const yearSel = document.getElementById('kshareFilterYear');
+  kikobaShareFilterMonth = monthSel.value === 'all' ? 'all' : parseInt(monthSel.value);
+  kikobaShareFilterYear = parseInt(yearSel.value);
+  renderKikobaShareRecordsTable();
+}
+
+async function renderKikobaShareRecordsTable(){
+  const box = document.getElementById('kshareRecordsTable');
+  if(!box) return;
+  box.innerHTML = 'Inapakia...';
+
+  let query = db.collection('kikobaShares').where('year','==', kikobaShareFilterYear);
+  if(kikobaShareFilterMonth !== 'all'){
+    query = query.where('month','==', kikobaShareFilterMonth);
+  }
+  const snap = await query.get();
+  let docs = []; snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+
+  // sort: month asc
+  docs.sort((a,b)=> (a.month - b.month) || 0);
+
+  let rows = docs.map(rec=>{
+    const member = allMembersCache.find(m=>m.id===rec.memberId);
+    const memberName = member ? escapeHTML(member.name) : '—';
+    const monthName = KIKOBA_MONTH_NAMES_SW[rec.month-1] || rec.month;
+    return `<tr>
+      <td>${memberName}</td>
+      <td>${monthName} ${rec.year}</td>
+      <td class="amount">TZS ${fmtTZS(rec.amount)}</td>
+      <td>${rec.shares}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteKikobaShareRecord('${rec.id}')">Delete</button></td>
+    </tr>`;
+  }).join('');
+
+  if(!rows) rows = `<tr><td colspan="5" class="empty-state">Hakuna record za hisa kwa kipindi hiki.</td></tr>`;
+
+  box.innerHTML = `
+    <table>
+      <thead><tr><th>Member</th><th>Mwezi</th><th>Kiasi</th><th>Hisa</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function deleteKikobaShareRecord(id){
+  if(!confirm('Una uhakika unataka kufuta record hii ya hisa? Kitendo hiki hakiwezi kurudishwa.')) return;
+  try{
+    await db.collection('kikobaShares').doc(id).delete();
+    await renderKikobaAccountantTab(document.getElementById('accountantContent'));
+  }catch(err){
+    alert('Error: ' + err.message);
+  }
+}
+
+async function downloadKikobaSharesYearlyPDF(){
+  const fiscalStartYear = parseInt(document.getElementById('kshareFiscalYear').value);
+  const fiscalEndYear = fiscalStartYear + 1;
+
+  // Mwaka wa fedha = Nov+Des ya fiscalStartYear, kisha Jan-Nov ya fiscalEndYear (miezi 13).
+  const [snapStart, snapEnd] = await Promise.all([
+    db.collection('kikobaShares').where('year','==', fiscalStartYear).where('month','in',[11,12]).get(),
+    db.collection('kikobaShares').where('year','==', fiscalEndYear).where('month','in',[1,2,3,4,5,6,7,8,9,10,11]).get()
+  ]);
+
+  let docs = [];
+  snapStart.forEach(d=> docs.push({id:d.id, ...d.data()}));
+  snapEnd.forEach(d=> docs.push({id:d.id, ...d.data()}));
+
+  if(docs.length === 0){
+    alert(`Hakuna record za hisa kwa mwaka wa fedha ${fiscalStartYear}/${fiscalEndYear}`);
+    return;
+  }
+
+  // Mpangilio wa miezi ya mwaka wa fedha: Nov(mwaka1)=0, Des(mwaka1)=1, Jan(mwaka2)=2 ... Nov(mwaka2)=12
+  const fiscalOrder = (rec)=> (rec.year === fiscalStartYear) ? (rec.month - 11) : (rec.month + 1);
+
+  docs.sort((a,b)=>{
+    const oa = fiscalOrder(a), ob = fiscalOrder(b);
+    if(oa !== ob) return oa - ob;
+    const ma = allMembersCache.find(m=>m.id===a.memberId);
+    const mb = allMembersCache.find(m=>m.id===b.memberId);
+    return (ma?.name||'').localeCompare(mb?.name||'');
+  });
+
+  const body = docs.map(rec=>{
+    const member = allMembersCache.find(m=>m.id===rec.memberId);
+    return [
+      member ? member.name : '—',
+      `${KIKOBA_MONTH_NAMES_SW[rec.month-1] || rec.month} ${rec.year}`,
+      'TZS ' + fmtTZS(rec.amount),
+      String(rec.shares)
+    ];
+  });
+
+  const totalAmount = docs.reduce((sum,r)=> sum + Number(r.amount||0), 0);
+  const totalShares = docs.reduce((sum,r)=> sum + Number(r.shares||0), 0);
+  body.push(['JUMLA', '', 'TZS ' + fmtTZS(totalAmount), String(totalShares)]);
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF();
+  pdf.setFontSize(14);
+  pdf.text(`Ripoti ya Hisa za Kikoba — Mwaka wa Fedha ${fiscalStartYear}/${fiscalEndYear}`, 14, 16);
+  pdf.setFontSize(10);
+  pdf.text(`(Novemba ${fiscalStartYear} \u2013 Novemba ${fiscalEndYear}) \u2014 Kidegembye Secondary School`, 14, 22);
+
+  pdf.autoTable({
+    startY: 28,
+    head: [['Jina', 'Mwezi', 'Kiasi', 'Hisa']],
+    body: body,
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [40, 60, 90] }
+  });
+
+  pdf.save(`Hisa_Kikoba_MwakaFedha_${fiscalStartYear}-${fiscalEndYear}.pdf`);
+}
+
 function updateKikobaLoanPreview(){
   const box = document.getElementById('kloanPreview');
   if(!box) return;
@@ -2013,4 +2191,4 @@ async function payKikobaExpense(id){
     paidAt: firebase.firestore.FieldValue.serverTimestamp()
   });
   await renderKikobaAccountantTab(document.getElementById('accountantContent'));
-}v
+}
