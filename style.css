@@ -257,6 +257,7 @@ tbody tr:hover{ background: rgba(15,122,92,0.04); }
 .stamp-paid{ background: rgba(15,122,92,0.12); color: var(--emerald-deep); }
 .stamp-pending{ background: rgba(217,119,6,0.14); color: var(--amber-deep); }
 .stamp-unpaid{ background: rgba(192,57,43,0.1); color: var(--red); }
+.stamp-overdue{ background: rgba(192,57,43,0.16); color: var(--red); font-weight:800; }
 
 .empty-state{
   text-align:center; padding:36px 12px; color: var(--ink-soft); font-size:0.9rem; font-weight:600;
