@@ -154,7 +154,7 @@ auth.onAuthStateChanged(async (user)=>{
     currentUser = user;
     const doc = await db.collection('members').doc(user.uid).get();
     if(!doc.exists){
-      showAuthMsg("Wasiliana na  system administrator, taarifa zako hazipo kwenye system.", "error");
+      showAuthMsg("Wasiliana na  system administrator, taarifa zako hazipo kwenye mfumo.", "error");
       auth.signOut();
       return;
     }
@@ -370,15 +370,15 @@ async function renderMemberUstawiContent(container){
         <div class="value">TZS ${fmtTZS(totalContributed)}</div>
       </div>
       <div class="stat-card neg">
-        <div class="label">Payout Used(Kiasi kilichotumika)</div>
+        <div class="label">Matumizi</div>
         <div class="value">TZS ${fmtTZS(Math.round(totalUsedShare))}</div>
       </div>
       <div class="stat-card pos">
-        <div class="label">Income Bonus(E.g pesa kutoka kwa HoS)</div>
+        <div class="label">Mapato ya nje(E.g pesa kutoka ofisi kuu/zawadi)</div>
         <div class="value">TZS ${fmtTZS(Math.round(incomeBonus))}</div>
       </div>
       <div class="stat-card ${remaining>=0?'pos':'neg'}">
-        <div class="label">Remaining Balance</div>
+        <div class="label">Salio lako</div>
         <div class="value">TZS ${fmtTZS(Math.round(remaining))}</div>
       </div>
     </div>
@@ -400,11 +400,12 @@ async function renderMemberKikobaContent(container){
   container.innerHTML = `<div class="empty-state">Loading Kikoba information...</div>`;
   const uid = currentUser.uid;
 
-  const [myShareSnap, allShareSnap, allRepaySnap, myLoansSnap] = await Promise.all([
+  const [myShareSnap, allShareSnap, allRepaySnap, myLoansSnap, allFinesSnap] = await Promise.all([
     db.collection('kikobaShares').where('memberId','==',uid).get(),
     db.collection('kikobaShares').get(),
     db.collection('kikobaRepayments').get(),
-    db.collection('kikobaLoans').where('memberId','==',uid).get()
+    db.collection('kikobaLoans').where('memberId','==',uid).get(),
+    db.collection('kikobaFines').get()
   ]);
 
   let myShares = [];
@@ -415,8 +416,14 @@ async function renderMemberKikobaContent(container){
   let totalSharesAll = 0;
   allShareSnap.forEach(d=> totalSharesAll += Number(d.data().shares||0));
 
+  // Kikoba's own interest income (excludes any portion owed to an external capital source)
   let totalIncomeAll = 0;
-  allRepaySnap.forEach(d=> totalIncomeAll += Number(d.data().interestPortion||0));
+  allRepaySnap.forEach(d=>{
+    const r = d.data();
+    totalIncomeAll += (r.internalInterestPortion !== undefined) ? Number(r.internalInterestPortion||0) : Number(r.interestPortion||0);
+  });
+  // Fines also feed into the Kikoba income pool used to grow share value
+  allFinesSnap.forEach(d=> totalIncomeAll += Number(d.data().amount||0));
 
   const currentShareValue = totalSharesAll > 0 ? (totalIncomeAll / totalSharesAll) : 0;
   const myTotalValue = myTotalShares * currentShareValue;
@@ -425,7 +432,7 @@ async function renderMemberKikobaContent(container){
   myShares.forEach(s=>{
     sharesRows += `<tr><td>${MONTH_NAMES[s.month-1]} ${s.year}</td><td class="amount">${s.shares} shares</td><td class="amount">TZS ${fmtTZS(s.shares*KIKOBA_SHARE_PRICE)}</td></tr>`;
   });
-  if(!sharesRows) sharesRows = `<tr><td colspan="3" class="empty-state">No shares purchased yet.</td></tr>`;
+  if(!sharesRows) sharesRows = `<tr><td colspan="3" class="empty-state">No hisa purchased yet.</td></tr>`;
 
   // Full loan history for this member (all statuses), newest first
   let myLoans = [];
@@ -443,15 +450,18 @@ async function renderMemberKikobaContent(container){
     const statusHtml = loan.status === 'completed'
       ? '<span class="stamp stamp-paid">Imelipwa Yote</span>'
       : '<span class="stamp stamp-pending">Inaendelea</span>';
+    const renewalNote = loan.renewalCount
+      ? ` <span style="font-size:0.7rem; color:var(--ink-soft);">(Imeongezwa muda ${loan.renewalCount}x)</span>`
+      : '';
     return `<tr>
       <td>${monthLabel}</td>
       <td class="amount">TZS ${fmtTZS(loan.principal)}</td>
       <td class="amount">TZS ${fmtTZS(loan.amountRepaid||0)}</td>
       <td class="amount">TZS ${fmtTZS(remaining)}</td>
-      <td>${statusHtml}</td>
+      <td>${statusHtml}${renewalNote}</td>
     </tr>`;
   }).join('');
-  if(!loanRows) loanRows = `<tr><td colspan="5" class="empty-state">Hauna historia ya mikopo bado.</td></tr>`;
+  if(!loanRows) loanRows = `<tr><td colspan="5" class="empty-state">Hauna Mkopo wowote.</td></tr>`;
 
   container.innerHTML = `
     <div class="grid grid-3" style="margin-bottom:24px;">
@@ -464,7 +474,7 @@ async function renderMemberKikobaContent(container){
         <div class="value">TZS ${fmtTZS(Math.round(currentShareValue))}</div>
       </div>
       <div class="stat-card pos">
-        <div class="label">Gawio lako(faida)</div>
+        <div class="label">Faida(gawio)</div>
         <div class="value">TZS ${fmtTZS(Math.round(myTotalValue))}</div>
       </div>
     </div>
@@ -593,7 +603,7 @@ async function renderChairmanTabContent(){
         <div class="form-row">
           <div class="field">
             <label>Beneficiary Member</label>
-            <select id="reqMember">${options || '<option>No active members</option>'}</select>
+            <select id="reqMember">${options}</option>
           </div>
           <div class="field">
             <label>Event Type</label>
@@ -610,8 +620,8 @@ async function renderChairmanTabContent(){
             <input type="date" id="reqDate">
           </div>
           <div class="field">
-            <label>Payout Amount</label>
-            <input type="text" value="TZS ${fmtTZS(ASSISTANCE_AMOUNT)}" disabled>
+            <label>Payout Amount (TZS)</label>
+            <input type="number" id="reqAmount" placeholder="e.g. 100000" value="${ASSISTANCE_AMOUNT}">
           </div>
         </div>
         <div class="field">
@@ -884,9 +894,14 @@ async function submitAssistanceRequest(){
   const type = document.getElementById('reqType').value;
   const eventDate = document.getElementById('reqDate').value;
   const desc = document.getElementById('reqDesc').value.trim();
+  const amount = parseFloat(document.getElementById('reqAmount').value);
 
   if(!memberId || !eventDate){
     msgBox.innerHTML = `<div class="msg msg-error">Select Mwanachama na Tarehe ya tukio kutokea.</div>`;
+    return;
+  }
+  if(!amount || amount <= 0){
+    msgBox.innerHTML = `<div class="msg msg-error">Weka kiasi sahihi cha malipo.</div>`;
     return;
   }
 
@@ -898,7 +913,7 @@ async function submitAssistanceRequest(){
       memberId: memberId,
       type: type,
       description: desc,
-      amount: ASSISTANCE_AMOUNT,
+      amount: amount,
       membersCountAtTime: membersCountAtTime,
       status: 'pending',
       eventDate: eventDate,
@@ -909,6 +924,7 @@ async function submitAssistanceRequest(){
     msgBox.innerHTML = `<div class="msg msg-ok">Request sent to the Accountant for payment.</div>`;
     document.getElementById('reqDesc').value = '';
     document.getElementById('reqDate').value = '';
+    document.getElementById('reqAmount').value = ASSISTANCE_AMOUNT;
   }catch(err){
     msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
   }
@@ -1112,15 +1128,15 @@ async function renderAccountantDashboard(forceRefresh){
         <div class="value">TZS ${fmtTZS(totalContributedAll)}</div>
       </div>
       <div class="stat-card pos">
-        <div class="label">Other Confirmed Income</div>
+        <div class="label">Mapato (E.g Nyongeza kutoka ofisi kuu/zawadi )</div>
         <div class="value">TZS ${fmtTZS(totalIncomeAll)}</div>
       </div>
       <div class="stat-card neg">
-        <div class="label">Total Payouts + Expenses</div>
+        <div class="label">Matumizi</div>
         <div class="value">TZS ${fmtTZS(totalPaidOutAll)}</div>
       </div>
       <div class="stat-card ${fundBalanceTop>=0?'pos':'neg'}">
-        <div class="label">Fund Balance</div>
+        <div class="label">Salio la Ustawi</div>
         <div class="value">TZS ${fmtTZS(fundBalanceTop)}</div>
       </div>
     </div>
@@ -1386,7 +1402,7 @@ function renderReportModeContent(){
     box.innerHTML = `
       <p style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:16px;">
         Fund Year period: <strong>${MONTH_NAMES[FUND_START_MONTH-1]} ${FUND_START_YEAR} – ${MONTH_NAMES[periodEnd.month-1]} ${periodEnd.year}</strong>.
-        This report covers the entire life of the fund so far.
+        Ripoti hii inajumuisha kuanzia mwanzo wa uchangiaji mpaka sasa.
       </p>
       <button class="btn btn-primary" onclick="generateAnnualPDF()">Download PDF (Fund Year)</button>
     `;
@@ -1713,7 +1729,7 @@ async function payAssistance(reqId){
 }
 
 async function confirmIncome(incomeId){
-  if(!confirm("Confirm that this income has actually been received and should be added to the fund balance?")) return;
+  if(!confirm("Confirm kiasi hiki umekipokea, then kitajazwa kwenye fund balance (salio)?")) return;
   const activeMembers = allMembersCache.filter(m=>m.role==='member' && m.status==='active');
   const membersCountAtTime = activeMembers.length || 1;
   try{
@@ -1733,26 +1749,56 @@ async function confirmIncome(incomeId){
    ACCOUNTANT — KIKOBA SUB-TABS
    ========================================================= */
 async function renderKikobaAccountantTab(c){
-  const [allShareSnap, allRepaySnap, allExpPaidSnap, allLoansOutSnap] = await Promise.all([
+  const [allShareSnap, allRepaySnap, allExpPaidSnap, allLoansOutSnap, allFinesSnap, allExternalSnap] = await Promise.all([
     db.collection('kikobaShares').get(),
     db.collection('kikobaRepayments').get(),
     db.collection('kikobaExpenses').where('status','==','paid').get(),
-    db.collection('kikobaLoans').get()
+    db.collection('kikobaLoans').get(),
+    db.collection('kikobaFines').get(),
+    db.collection('kikobaExternalCapital').get()
   ]);
   let totalShares = 0; allShareSnap.forEach(d=> totalShares += Number(d.data().shares||0));
-  let totalIncome = 0; allRepaySnap.forEach(d=> totalIncome += Number(d.data().interestPortion||0));
+
+  // Only count Kikoba's OWN share of interest as income — the portion of interest
+  // that belongs to an external capital source is excluded here (it is tracked
+  // separately and paid back to that source, not kept as Kikoba income).
+  let totalInterestIncome = 0;
+  allRepaySnap.forEach(d=>{
+    const r = d.data();
+    totalInterestIncome += (r.internalInterestPortion !== undefined)
+      ? Number(r.internalInterestPortion||0)
+      : Number(r.interestPortion||0);
+  });
+
+  let totalFines = 0; allFinesSnap.forEach(d=> totalFines += Number(d.data().amount||0));
+
   let totalExpensesPaid = 0; allExpPaidSnap.forEach(d=> totalExpensesPaid += Number(d.data().amount||0));
+
+  const totalIncome = totalInterestIncome + totalFines;
   const kikobaBalance = totalIncome - totalExpensesPaid;
   const shareValue = totalShares > 0 ? totalIncome/totalShares : 0;
 
-  // Available capital = share capital + net income, minus principal currently out on active/unpaid loans
+  // External capital currently outstanding (owed back to sources outside Kikoba)
+  let externalOutstanding = 0;
+  allExternalSnap.forEach(d=>{
+    const e = d.data();
+    if(e.status === 'active'){
+      externalOutstanding += Math.max(0, Number(e.totalOwed||0) - Number(e.amountRepaid||0));
+    }
+  });
+  window.__kikobaExternalOutstanding = externalOutstanding;
+
+  // Available capital = share capital + net income, minus the portion of active loans
+  // that was funded from Kikoba's OWN capital (internalPrincipal). Money funded
+  // externally is not "ours" to begin with, so it doesn't reduce our own available pool.
   const shareCapital = totalShares * KIKOBA_SHARE_PRICE;
   let principalOutstanding = 0;
   allLoansOutSnap.forEach(d=>{
     const loan = d.data();
     if(loan.status === 'active'){
-      const remaining = Number(loan.totalOwed||0) - Number(loan.amountRepaid||0);
-      principalOutstanding += Math.max(0, remaining);
+      const remaining = Math.max(0, Number(loan.totalOwed||0) - Number(loan.amountRepaid||0));
+      const internalRatio = loan.principal ? ((loan.internalPrincipal !== undefined ? loan.internalPrincipal : loan.principal) / loan.principal) : 1;
+      principalOutstanding += remaining * internalRatio;
     }
   });
   const availableCapital = (shareCapital + kikobaBalance) - principalOutstanding;
@@ -1761,14 +1807,17 @@ async function renderKikobaAccountantTab(c){
   c.innerHTML = `
     <div class="grid grid-3" style="margin-bottom:20px;">
       <div class="stat-card"><div class="label">Jumla ya Hisa</div><div class="value">${totalShares}</div></div>
-      <div class="stat-card pos"><div class="label">Current Thamani ya Hisa</div><div class="value">TZS ${fmtTZS(Math.round(shareValue))}</div></div>
-      <div class="stat-card ${kikobaBalance>=0?'pos':'neg'}"><div class="label">Kikoba Income Balance</div><div class="value">TZS ${fmtTZS(kikobaBalance)}</div></div>
-      <div class="stat-card ${availableCapital>=0?'pos':'neg'}"><div class="label">Mtaji uliopo kwa Mikopo mipya</div><div class="value">TZS ${fmtTZS(Math.round(availableCapital))}</div></div>
+      <div class="stat-card pos"><div class="label"> Thamani ya Hisa moja mpaka sasa</div><div class="value">TZS ${fmtTZS(Math.round(shareValue))}</div></div>
+      <div class="stat-card ${kikobaBalance>=0?'pos':'neg'}"><div class="label">Faida (Riba)</div><div class="value">TZS ${fmtTZS(kikobaBalance)}</div></div>
+      <div class="stat-card ${availableCapital>=0?'pos':'neg'}"><div class="label">Mtaji uliopo (Salio)</div><div class="value">TZS ${fmtTZS(Math.round(availableCapital))}</div></div>
+      <div class="stat-card neg"><div class="label">Mtaji wa Nje </div><div class="value">TZS ${fmtTZS(Math.round(externalOutstanding))}</div></div>
+      <div class="stat-card pos"><div class="label">Jumla Faini Zilizokusanywa</div><div class="value">TZS ${fmtTZS(totalFines)}</div></div>
     </div>
     <div class="tabs-row" style="margin-bottom:18px;">
       <button class="tab-btn ${kikobaAccountantSubTab==='kshares'?'active':''}" onclick="switchKikobaAccountantSubTab('kshares')">Record Hisa</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='kdisburse'?'active':''}" onclick="switchKikobaAccountantSubTab('kdisburse')">Toa mkopo</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='krepay'?'active':''}" onclick="switchKikobaAccountantSubTab('krepay')">Record Marejesho</button>
+      <button class="tab-btn ${kikobaAccountantSubTab==='kfines'?'active':''}" onclick="switchKikobaAccountantSubTab('kfines')">Faini</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='kexp'?'active':''}" onclick="switchKikobaAccountantSubTab('kexp')">Kikoba Expenses</button>
     </div>
     <div id="kikobaAccountantContent"></div>
@@ -1836,7 +1885,7 @@ async function renderKikobaAccountantSubContent(){
             <select id="kshareFiscalYear">${kikobaFiscalYearOptionsHTML()}</select>
           </div>
           <div class="field" style="flex:0;">
-            <button class="btn btn-outline" onclick="downloadKikobaSharesYearlyPDF()">📄 Pakua PDF — Mwaka wa Fedha</button>
+            <button class="btn btn-outline" onclick="downloadKikobaSharesYearlyPDF()"> Download PDF — Mwaka wa Fedha</button>
           </div>
         </div>
         <div id="kshareRecordsTable">Inapakia...</div>
@@ -1874,35 +1923,89 @@ async function renderKikobaAccountantSubContent(){
         <p id="kloanPreview" style="font-size:0.85rem; color:var(--ink-soft); margin-bottom:14px;">
           Jaza kiasi kuona jumla ya kulipa (kiasi + riba 15%).
         </p>
+        <div id="kloanExternalWrap" class="field hidden" style="max-width:340px; border:1.5px dashed var(--red); border-radius:var(--radius-sm); padding:14px;">
+          <label>Chanzo cha Mtaji wa Nyongeza (nje ya Kikoba)</label>
+          <input type="text" id="kloanExternalSource" placeholder="mfano: Imetolewa kwenye ustawi">
+          <p style="font-size:0.72rem; color:var(--ink-soft); margin-top:6px;">
+            Kiasi hiki kitafuatiliwa kama deni la Kikoba kwa chanzo hicho, na kitarudishwa kikiwa na riba 15% pindi mwanachama atakapolipa mkopo wake.
+          </p>
+        </div>
         <button class="btn btn-primary" onclick="giveKikobaLoan()">Thibitisha na Toa Mkopo</button>
       </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="section-title"><h3>Historia ya Mtaji wa Nje</h3></div>
+        <div id="externalCapitalTable">Uploading...</div>
+      </div>
     `;
+    await renderExternalCapitalTable();
   }
 
   else if(kikobaAccountantSubTab === 'krepay'){
     const snap = await db.collection('kikobaLoans').where('status','==','active').get();
     let docs = []; snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+    const now = Date.now();
     let rows = docs.map(loan=>{
       const member = allMembersCache.find(m=>m.id===loan.memberId);
       const remaining = Number(loan.totalOwed||0) - Number(loan.amountRepaid||0);
+      const isOverdue = !!(loan.dueDateMillis && now > loan.dueDateMillis);
+      const overdueTag = isOverdue ? `<div class="stamp stamp-overdue" style="margin-top:6px;">⚠ Muda Umepita (Miezi 3)</div>` : '';
+      const renewalTag = loan.renewalCount ? `<div style="font-size:0.7rem; color:var(--ink-soft); margin-top:4px;">Imeongezwa muda: ${loan.renewalCount}x</div>` : '';
+      const renewBtn = isOverdue ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="renewOverdueKikobaLoan('${loan.id}')">Panga Upya Mkopo (hamisha) (+15%)</button>` : '';
       return `<tr>
-        <td>${member?escapeHTML(member.name):'—'}</td>
+        <td>${member?escapeHTML(member.name):'—'}${overdueTag}${renewalTag}</td>
         <td class="amount">TZS ${fmtTZS(loan.totalOwed)}</td>
         <td class="amount">TZS ${fmtTZS(loan.amountRepaid||0)}</td>
         <td class="amount">TZS ${fmtTZS(remaining)}</td>
         <td>
           <input type="number" id="repay_${loan.id}" placeholder="Amount handed over" style="width:130px; padding:8px; border:1px solid var(--line); border-radius:8px;">
           <button class="btn btn-primary btn-sm" onclick="recordKikobaRepayment('${loan.id}')">Confirm</button>
+          ${renewBtn}
         </td>
       </tr>`;
     }).join('');
     if(!rows) rows = `<tr><td colspan="5" class="empty-state">No active loans.</td></tr>`;
     box.innerHTML = `
       <div class="card">
-        <div class="section-title"><h3>Active Loans — Record Repayments</h3></div>
-        <table><thead><tr><th>Member</th><th>Total Owed</th><th>Repaid</th><th>Remaining</th><th>Record Repayment</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="section-title"><h3>Active Loans — Record Rejesho</h3></div>
+        <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
+          Mkopo ukikaa zaidi ya miezi 3 bila kulipwa wote, utaonekana na alama "⚠ Muda Umepita". Bonyeza
+          "Panga Upya Mkopo" kuongeza riba mpya ya 15% kwenye kiasi kilichobaki na kuweka muda mpya wa miezi 3.
+        </p>
+        <table><thead><tr><th>Member</th><th>Total Owed</th><th>Repaid</th><th>Remaining</th><th>Record Rejesho</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     `;
+  }
+
+  else if(kikobaAccountantSubTab === 'kfines'){
+    await fetchKikobaMembers();
+    const kMembers = allMembersCache.filter(m=> isKikobaActiveMember(m.id));
+    const options = kMembers.map(m=>`<option value="${m.id}">${escapeHTML(m.name)}</option>`).join('');
+
+    box.innerHTML = `
+      <div class="card">
+        <div class="section-title"><h3>Toa Faini kwa Mwanachama</h3></div>
+        <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:14px;">
+          Tumia hii kwa faini za Kikoba (mfano: kuchelewa mkutano au michango). Faini zote huongezwa
+          moja kwa moja kwenye Kikoba income na hutumika kuzalisha mtaji zaidi wa mikopo.
+        </p>
+        <div id="kfineMsg"></div>
+        <div class="form-row">
+          <div class="field"><label>Mwanachama</label><select id="kfineMember">${options || '<option>Hakuna Kikoba members</option>'}</select></div>
+          <div class="field" style="max-width:220px;"><label>Kiasi cha Faini (TZS)</label><input type="number" id="kfineAmount" placeholder="e.g. 2000"></div>
+        </div>
+        <div class="field">
+          <label>Sababu</label>
+          <textarea id="kfineReason" rows="2" placeholder="mfano: Kuchelewa kwenye kikundi cha Kikoba"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="recordKikobaFine()">Save Faini</button>
+      </div>
+      <div class="card">
+        <div class="section-title"><h3>Historia ya Faini</h3></div>
+        <div id="kfineHistoryTable">Uploading...</div>
+      </div>
+    `;
+    await renderKikobaFineHistoryTable();
   }
 
   else if(kikobaAccountantSubTab === 'kexp'){
@@ -2096,13 +2199,29 @@ function updateKikobaLoanPreview(){
   if(!box) return;
   const amountInput = document.getElementById('kloanPrincipal');
   const amount = amountInput ? parseFloat(amountInput.value) : NaN;
+  const externalWrap = document.getElementById('kloanExternalWrap');
+
   if(!amount || amount<=0){
     box.textContent = "Jaza kiasi kuona jumla ya kulipa (kiasi + riba 15%).";
+    if(externalWrap) externalWrap.classList.add('hidden');
     return;
   }
+
   const totalOwed = Math.round(amount * (1+KIKOBA_LOAN_INTEREST_RATE));
   const interestAmount = totalOwed - Math.round(amount);
-  box.innerHTML = `Riba (15%): <strong>TZS ${fmtTZS(interestAmount)}</strong> &nbsp;|&nbsp; Jumla ya Kulipa: <strong>TZS ${fmtTZS(totalOwed)}</strong>`;
+  const availableCapital = window.__kikobaAvailableCapital || 0;
+  const deficit = Math.max(0, Math.round(amount - availableCapital));
+
+  let html = `Riba (15%): <strong>TZS ${fmtTZS(interestAmount)}</strong> &nbsp;|&nbsp; Jumla ya Kulipa: <strong>TZS ${fmtTZS(totalOwed)}</strong>`;
+
+  if(deficit > 0){
+    html += `<br><span style="color:var(--red); font-weight:700;">⚠ Mtaji wa Kikoba haitoshi kwa TZS ${fmtTZS(deficit)} — jaza chanzo cha mtaji wa nyongeza hapa chini ili kuendelea.</span>`;
+    if(externalWrap) externalWrap.classList.remove('hidden');
+  } else {
+    if(externalWrap) externalWrap.classList.add('hidden');
+  }
+
+  box.innerHTML = html;
 }
 
 async function giveKikobaLoan(){
@@ -2111,6 +2230,8 @@ async function giveKikobaLoan(){
   const month = parseInt(document.getElementById('kloanMonth').value);
   const year = parseInt(document.getElementById('kloanYear').value);
   const principal = parseFloat(document.getElementById('kloanPrincipal').value);
+  const externalSourceInput = document.getElementById('kloanExternalSource');
+  const externalSource = externalSourceInput ? externalSourceInput.value.trim() : '';
 
   if(!memberId || !principal || principal<=0){
     msgBox.innerHTML = `<div class="msg msg-error">Chagua mwanachama na weka kiasi sahihi.</div>`;
@@ -2118,36 +2239,226 @@ async function giveKikobaLoan(){
   }
 
   const availableCapital = window.__kikobaAvailableCapital || 0;
-  if(principal > availableCapital){
-    msgBox.innerHTML = `<div class="msg msg-error">Kiasi hiki kinazidi mtaji uliopo wa Kikoba (TZS ${fmtTZS(Math.round(availableCapital))}). Subiri hisa au marejesho zaidi ziingie.</div>`;
+  const deficit = Math.max(0, Math.round(principal - availableCapital));
+
+  if(deficit > 0 && !externalSource){
+    msgBox.innerHTML = `<div class="msg msg-error">Mtaji wa Kikoba haitoshi kwa TZS ${fmtTZS(deficit)}. Tafadhali jaza "Chanzo cha Mtaji wa Nyongeza" ili kuendelea.</div>`;
     return;
   }
-
-  try{
+ try{
     const existingActive = await db.collection('kikobaLoans').where('memberId','==',memberId).where('status','==','active').get();
     if(!existingActive.empty){
       msgBox.innerHTML = `<div class="msg msg-error">Mwanachama huyu bado ana mkopo hai ambao haujalipwa wote. Kamilisha huo kwanza kabla ya kutoa mwingine.</div>`;
       return;
     }
-
     const totalOwed = Math.round(principal * (1+KIKOBA_LOAN_INTEREST_RATE));
-    if(!confirm(`Thibitisha: unatoa mkopo wa TZS ${fmtTZS(principal)}, jumla ya kulipa TZS ${fmtTZS(totalOwed)} (riba 15%). Endelea?`)) return;
+    let confirmMsg = `Thibitisha: unatoa mkopo wa TZS ${fmtTZS(principal)}, jumla ya kulipa TZS ${fmtTZS(totalOwed)} (riba 15%).`;
+    if(deficit > 0){
+      confirmMsg += `\n\nKumbuka: TZS ${fmtTZS(deficit)} kati ya kiasi hiki kinatoka kwenye chanzo cha nje (${externalSource}), na kitarudishwa huko kikiwa na riba 15%.`;
+    }
+    confirmMsg += `\n\nEndelea?`;
+    if(!confirm(confirmMsg)) return;
 
     const dueDateMillis = Date.now() + (KIKOBA_REPAYMENT_MONTHS*30*24*60*60*1000);
-    await db.collection('kikobaLoans').add({
+    const internalPrincipal = principal - deficit;
+    const loanRef = db.collection('kikobaLoans').doc();
+    const batch = db.batch();
+    let externalCapitalId = null;
+
+    if(deficit > 0){
+      const extRef = db.collection('kikobaExternalCapital').doc();
+      externalCapitalId = extRef.id;
+      const extTotalOwed = Math.round(deficit * (1+KIKOBA_LOAN_INTEREST_RATE));
+      batch.set(extRef, {
+        loanId: loanRef.id,
+        memberId,
+        source: externalSource,
+        principal: deficit,
+        totalOwed: extTotalOwed,
+        amountRepaid: 0,
+        status: 'active',
+        takenBy: currentUser.uid,
+        takenAtMillis: Date.now(),
+        takenAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    batch.set(loanRef, {
       memberId, principal, totalOwed, amountRepaid:0, status:'active',
       month, year,
+      internalPrincipal,
+      externalCapitalId,
+      renewalCount: 0,
       disbursedBy: currentUser.uid,
       disbursedAtMillis: Date.now(), dueDateMillis,
       disbursedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    msgBox.innerHTML = `<div class="msg msg-ok">Mkopo umetolewa kikamilifu.</div>`;
+
+    await batch.commit();
+
+    msgBox.innerHTML = `<div class="msg msg-ok">Mkopo umetolewa kikamilifu${deficit>0 ? ' (ikiwa ni pamoja na mtaji wa nje)' : ''}.</div>`;
     const principalInput = document.getElementById('kloanPrincipal');
     if(principalInput) principalInput.value = '';
+    if(externalSourceInput) externalSourceInput.value = '';
     await renderKikobaAccountantTab(document.getElementById('accountantContent'));
   }catch(err){
     msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
   }
+}
+
+/* =========================================================
+   KIKOBA — EXTERNAL CAPITAL HISTORY
+   ========================================================= */
+async function renderExternalCapitalTable(){
+  const box = document.getElementById('externalCapitalTable');
+  if(!box) return;
+  box.innerHTML = 'Uploading...';
+
+  const snap = await db.collection('kikobaExternalCapital').get();
+  let docs = []; snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+  docs.sort((a,b)=> (b.takenAtMillis||0) - (a.takenAtMillis||0));
+
+  let rows = docs.map(e=>{
+    const member = allMembersCache.find(m=>m.id===e.memberId);
+    const remaining = Math.max(0, Number(e.totalOwed||0) - Number(e.amountRepaid||0));
+    const statusHtml = e.status === 'completed'
+      ? '<span class="stamp stamp-paid">Imerudishwa Yote</span>'
+      : '<span class="stamp stamp-pending">Bado Inadaiwa</span>';
+    return `<tr>
+      <td>${member?escapeHTML(member.name):'—'}</td>
+      <td>${escapeHTML(e.source)}</td>
+      <td class="amount">TZS ${fmtTZS(e.principal)}</td>
+      <td class="amount">TZS ${fmtTZS(e.totalOwed)}</td>
+      <td class="amount">TZS ${fmtTZS(remaining)}</td>
+      <td>${statusHtml}</td>
+    </tr>`;
+  }).join('');
+  if(!rows) rows = `<tr><td colspan="6" class="empty-state">Hakuna mtaji wa nje uliochukuliwa</td></tr>`;
+
+  box.innerHTML = `
+    <table>
+      <thead><tr><th>Mwanachama</th><th>Chanzo</th><th>Kiasi Kilichochukuliwa</th><th>Jumla ya Kurudisha</th><th>Kinachodaiwa</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+/* =========================================================
+   KIKOBA — OVERDUE LOAN RENEWAL (RE-COMPOUNDING)
+   ========================================================= */
+async function renewOverdueKikobaLoan(loanId){
+  if(!confirm("Mwanachama huyu hajakamilisha kulipa ndani ya miezi 3. Ukiendelea, deni lililobaki litaongezwa riba mpya ya 15% na muda mpya wa miezi 3 utaanza kuhesabiwa kuanzia leo. Endelea?")) return;
+  try{
+    await db.runTransaction(async (tx)=>{
+      const loanRef = db.collection('kikobaLoans').doc(loanId);
+      const loanDoc = await tx.get(loanRef);
+      if(!loanDoc.exists) throw new Error("Mkopo haukupatikana.");
+      const loan = loanDoc.data();
+      if(loan.status !== 'active') throw new Error("Mkopo huu si hai tena.");
+
+      let extRef = null, ext = null;
+      if(loan.externalCapitalId){
+        extRef = db.collection('kikobaExternalCapital').doc(loan.externalCapitalId);
+        const extDoc = await tx.get(extRef);
+        if(extDoc.exists) ext = extDoc.data();
+      }
+
+      const remaining = Math.max(0, Number(loan.totalOwed||0) - Number(loan.amountRepaid||0));
+      const newTotalOwed = Math.round(remaining * (1+KIKOBA_LOAN_INTEREST_RATE));
+      const newDueDate = Date.now() + (KIKOBA_REPAYMENT_MONTHS*30*24*60*60*1000);
+
+      const renewalEntry = {
+        renewedAtMillis: Date.now(),
+        oldTotalOwed: loan.totalOwed,
+        remainingAtRenewal: remaining,
+        newTotalOwed: newTotalOwed
+      };
+      const history = Array.isArray(loan.renewalHistory) ? loan.renewalHistory.slice() : [];
+      history.push(renewalEntry);
+
+      tx.update(loanRef, {
+        totalOwed: newTotalOwed,
+        amountRepaid: 0,
+        dueDateMillis: newDueDate,
+        renewalCount: (loan.renewalCount||0) + 1,
+        renewalHistory: history
+      });
+
+      if(extRef && ext && ext.status === 'active'){
+        const extRemaining = Math.max(0, Number(ext.totalOwed||0) - Number(ext.amountRepaid||0));
+        const newExtTotalOwed = Math.round(extRemaining * (1+KIKOBA_LOAN_INTEREST_RATE));
+        tx.update(extRef, {
+          totalOwed: newExtTotalOwed,
+          amountRepaid: 0
+        });
+      }
+    });
+
+    await renderKikobaAccountantTab(document.getElementById('accountantContent'));
+  }catch(err){
+    alert("Error: " + err.message);
+  }
+}
+
+/* =========================================================
+   KIKOBA — FINES
+   ========================================================= */
+async function recordKikobaFine(){
+  const msgBox = document.getElementById('kfineMsg');
+  const memberId = document.getElementById('kfineMember').value;
+  const amount = parseFloat(document.getElementById('kfineAmount').value);
+  const reason = document.getElementById('kfineReason').value.trim();
+
+  if(!memberId || !amount || amount<=0){
+    msgBox.innerHTML = `<div class="msg msg-error">Chagua mwanachama na weka kiasi sahihi cha faini.</div>`;
+    return;
+  }
+  if(!reason){
+    msgBox.innerHTML = `<div class="msg msg-error">Andika sababu ya faini.</div>`;
+    return;
+  }
+
+  try{
+    await db.collection('kikobaFines').add({
+      memberId, amount, reason,
+      recordedBy: currentUser.uid,
+      recordedAtMillis: Date.now(),
+      recordedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    msgBox.innerHTML = `<div class="msg msg-ok">Faini imerekodiwa na kuongezwa kwenye Kikoba income.</div>`;
+    document.getElementById('kfineAmount').value = '';
+    document.getElementById('kfineReason').value = '';
+    await renderKikobaAccountantTab(document.getElementById('accountantContent'));
+  }catch(err){
+    msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
+  }
+}
+
+async function renderKikobaFineHistoryTable(){
+  const box = document.getElementById('kfineHistoryTable');
+  if(!box) return;
+  box.innerHTML = 'uploading...';
+
+  const snap = await db.collection('kikobaFines').get();
+  let docs = []; snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+  docs.sort((a,b)=> (b.recordedAtMillis||0) - (a.recordedAtMillis||0));
+
+  let rows = docs.map(f=>{
+    const member = allMembersCache.find(m=>m.id===f.memberId);
+    return `<tr>
+      <td>${member?escapeHTML(member.name):'—'}</td>
+      <td>${escapeHTML(f.reason)}</td>
+      <td class="amount">TZS ${fmtTZS(f.amount)}</td>
+    </tr>`;
+  }).join('');
+  if(!rows) rows = `<tr><td colspan="3" class="empty-state">Hakuna faini zilizorekodiwa.</td></tr>`;
+
+  box.innerHTML = `
+    <table>
+      <thead><tr><th>Mwanachama</th><th>Sababu</th><th>Kiasi</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 async function recordKikobaRepayment(loanId){
@@ -2162,13 +2473,32 @@ async function recordKikobaRepayment(loanId){
       if(!loanDoc.exists) throw new Error("Loan not found.");
       const loan = loanDoc.data();
 
+      let extRef = null, ext = null;
+      if(loan.externalCapitalId){
+        extRef = db.collection('kikobaExternalCapital').doc(loan.externalCapitalId);
+        const extDoc = await tx.get(extRef);
+        if(extDoc.exists) ext = extDoc.data();
+      }
+
       const interestPortion = amountPaid * (KIKOBA_LOAN_INTEREST_RATE/(1+KIKOBA_LOAN_INTEREST_RATE));
       const principalPortion = amountPaid - interestPortion;
       const newRepaid = Number(loan.amountRepaid||0) + amountPaid;
 
+      // Split this payment between Kikoba's own capital (internal) and the
+      // external source (if part of this loan was funded from outside), based
+      // on the share of the loan's principal that came from each side.
+      const externalRatio = (ext && ext.status === 'active' && loan.principal) ? (Number(ext.principal||0) / Number(loan.principal||1)) : 0;
+      const externalInterestPortion = interestPortion * externalRatio;
+      const externalPrincipalPortion = principalPortion * externalRatio;
+      const internalInterestPortion = interestPortion - externalInterestPortion;
+      const internalPrincipalPortion = principalPortion - externalPrincipalPortion;
+
       const repayRef = db.collection('kikobaRepayments').doc();
       tx.set(repayRef, {
-        loanId, memberId: loan.memberId, amountPaid, interestPortion, principalPortion,
+        loanId, memberId: loan.memberId, amountPaid,
+        interestPortion, principalPortion,
+        internalInterestPortion, internalPrincipalPortion,
+        externalInterestPortion, externalPrincipalPortion,
         recordedBy: currentUser.uid, recordedAtMillis: Date.now(),
         recordedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
@@ -2176,6 +2506,14 @@ async function recordKikobaRepayment(loanId){
       const updateData = { amountRepaid: newRepaid };
       if(newRepaid >= loan.totalOwed) updateData.status = 'completed';
       tx.update(loanRef, updateData);
+
+      if(extRef && ext && ext.status === 'active'){
+        const extAmountApplied = externalInterestPortion + externalPrincipalPortion;
+        const newExtRepaid = Number(ext.amountRepaid||0) + extAmountApplied;
+        const extUpdate = { amountRepaid: newExtRepaid };
+        if(newExtRepaid >= ext.totalOwed) extUpdate.status = 'completed';
+        tx.update(extRef, extUpdate);
+      }
     });
 
     await renderKikobaAccountantTab(document.getElementById('accountantContent'));
