@@ -1231,6 +1231,22 @@ async function renderAccountantTabContent(){
       </div>
 
       <div class="card">
+        <div class="section-title"><h3>Angalia Historia Yote ya Mwanachama (Kubaini Makosa)</h3></div>
+        <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
+          Tumia hii kuona record ZOTE za contribution za mwanachama mmoja — bila kuchuja kwa mwezi/mwaka maalum.
+          Hii inasaidia kubaini record za ziada, za makosa, au zenye mwaka/mwezi usio sahihi.
+        </p>
+        <div class="form-row">
+          <div class="field">
+            <label>Member</label>
+            <select id="histContribMember">${options || '<option>No active members</option>'}</select>
+          </div>
+        </div>
+        <button class="btn btn-outline" onclick="viewMemberContributionHistory()">Angalia Historia Yote</button>
+        <div id="histContribResult" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="card">
         <div class="section-title"><h3>Recent Records (delete if there's an error)</h3></div>
         <table>
           <thead><tr><th>Member</th><th>Month/Year</th><th>Amount</th><th>Action</th></tr></thead>
@@ -1707,6 +1723,57 @@ async function searchContribution(){
   }
 }
 
+async function viewMemberContributionHistory(){
+  const resultBox = document.getElementById('histContribResult');
+  const memberId = document.getElementById('histContribMember').value;
+
+  if(!memberId){
+    resultBox.innerHTML = `<div class="msg msg-error">Chagua mwanachama kwanza.</div>`;
+    return;
+  }
+
+  resultBox.innerHTML = `<div class="empty-state">Inapakia historia yote...</div>`;
+
+  try{
+    const snap = await db.collection('contributions').where('memberId','==',memberId).get();
+    let docs = [];
+    snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+
+    if(docs.length === 0){
+      resultBox.innerHTML = `<div class="msg msg-error">Hakuna record yoyote ya contribution kwa mwanachama huyu.</div>`;
+      return;
+    }
+
+    docs.sort((a,b)=> (a.year*12+a.month) - (b.year*12+b.month));
+
+    const periodEnd = getFundPeriodEnd();
+    let total = 0;
+    let rows = docs.map(r=>{
+      total += Number(r.amount||0);
+      const inPeriod = isInFundPeriod(r.month, r.year, periodEnd) && (r.year*12+r.month) >= (FUND_START_YEAR*12+FUND_START_MONTH);
+      const flagHtml = inPeriod ? '' : `<span class="stamp stamp-overdue" style="margin-left:6px;">⚠ Nje ya Kipindi cha Mfuko</span>`;
+      return `<tr>
+        <td>${MONTH_NAMES[r.month-1]||'?'} ${r.year}${flagHtml}</td>
+        <td class="amount">TZS ${fmtTZS(r.amount)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteContribution('${r.id}')">Delete</button></td>
+      </tr>`;
+    }).join('');
+
+    resultBox.innerHTML = `
+      <div class="stat-card" style="margin-bottom:14px;">
+        <div class="label">Jumla ya Michango Yote (Record ${docs.length})</div>
+        <div class="value">TZS ${fmtTZS(total)}</div>
+      </div>
+      <table>
+        <thead><tr><th>Month/Year</th><th>Amount</th><th>Action</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }catch(err){
+    resultBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
+  }
+}
+
 async function deleteContribution(contribId){
   if(!confirm("Are you sure you want to delete this payment record? This action cannot be undone.")) return;
   try{
@@ -2008,6 +2075,15 @@ async function renderKikobaAccountantSubContent(){
         </p>
         <table><thead><tr><th>Member</th><th>Jumla ya mkopo</th><th>Repaid</th><th>Remaining</th><th>Record Rejesho</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="section-title"><h3>Ripoti ya Wanaokopa (PDF)</h3></div>
+        <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:14px;">
+          Download ripoti ya wanachama wote waliowahi kukopa — mwezi walikokopa, kiasi, kilicholipwa, na
+          kama wamemaliza kulipa au bado wanadaiwa. Ripoti hii inajumuisha mikopo yote (hai na iliyokamilika).
+        </p>
+        <button class="btn btn-outline" onclick="downloadKikobaLoansPDF()"> Download PDF — Wanaokopa</button>
+      </div>
     `;
   }
 
@@ -2228,6 +2304,73 @@ async function downloadKikobaSharesYearlyPDF(){
   pdf.save(`Hisa_Kikoba_MwakaFedha_${fiscalStartYear}-${fiscalEndYear}.pdf`);
 }
 
+async function downloadKikobaLoansPDF(){
+  const snap = await db.collection('kikobaLoans').get();
+  let docs = []; snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+
+  if(docs.length === 0){
+    alert('Hakuna mkopo wowote uliowahi kutolewa.');
+    return;
+  }
+
+  // newest first: by year/month, then by disbursedAtMillis
+  docs.sort((a,b)=>{
+    const av = (a.year||0)*12+(a.month||0);
+    const bv = (b.year||0)*12+(b.month||0);
+    if(av!==bv) return bv-av;
+    return (b.disbursedAtMillis||0)-(a.disbursedAtMillis||0);
+  });
+
+  const body = docs.map(loan=>{
+    const member = allMembersCache.find(m=>m.id===loan.memberId);
+    const remaining = Math.max(0, Number(loan.totalOwed||0) - Number(loan.amountRepaid||0));
+    const monthLabel = loan.month ? `${KIKOBA_MONTH_NAMES_SW[loan.month-1]||loan.month} ${loan.year}` : '—';
+    const statusLabel = loan.status === 'completed' ? 'Amemaliza Kulipa' : 'Bado Anadaiwa';
+    return [
+      member ? member.name : '—',
+      monthLabel,
+      'TZS ' + fmtTZS(loan.principal),
+      'TZS ' + fmtTZS(loan.totalOwed),
+      'TZS ' + fmtTZS(loan.amountRepaid||0),
+      'TZS ' + fmtTZS(remaining),
+      statusLabel
+    ];
+  });
+
+  const totalPrincipal = docs.reduce((s,l)=> s+Number(l.principal||0), 0);
+  const totalOwed = docs.reduce((s,l)=> s+Number(l.totalOwed||0), 0);
+  const totalRepaid = docs.reduce((s,l)=> s+Number(l.amountRepaid||0), 0);
+  const totalRemaining = totalOwed - totalRepaid;
+  body.push(['JUMLA', '', 'TZS '+fmtTZS(totalPrincipal), 'TZS '+fmtTZS(totalOwed), 'TZS '+fmtTZS(totalRepaid), 'TZS '+fmtTZS(totalRemaining), '']);
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'landscape' });
+  pdf.setFontSize(14);
+  pdf.text('Ripoti ya Wanaokopa — Kikoba', 14, 16);
+  pdf.setFontSize(10);
+  pdf.text(`Kidegembye Secondary School \u2014 Tarehe ya Ripoti: ${new Date().toLocaleDateString('en-GB')}`, 14, 22);
+
+  pdf.autoTable({
+    startY: 28,
+    head: [['Jina', 'Mwezi Alikokopa', 'Kiasi Alichokopa', 'Jumla ya Kulipa', 'Kilicholipwa', 'Kinachodaiwa', 'Hali']],
+    body: body,
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [40, 60, 90] },
+    didParseCell: function(data){
+      if(data.section === 'body' && data.column.index === 6){
+        if(String(data.cell.raw).includes('Bado')){
+          data.cell.styles.textColor = [192, 57, 43];
+          data.cell.styles.fontStyle = 'bold';
+        } else if(String(data.cell.raw).includes('Amemaliza')){
+          data.cell.styles.textColor = [39, 174, 96];
+        }
+      }
+    }
+  });
+
+  pdf.save(`Wanaokopa_Kikoba_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
 function updateKikobaLoanPreview(){
   const box = document.getElementById('kloanPreview');
   if(!box) return;
@@ -2334,7 +2477,6 @@ async function giveKikobaLoan(){
     msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
   }
 }
-
 /* =========================================================
    KIKOBA — EXTERNAL CAPITAL HISTORY
    ========================================================= */
