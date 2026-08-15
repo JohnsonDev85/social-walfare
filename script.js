@@ -476,6 +476,10 @@ async function renderMemberKikobaContent(container){
         <div class="label">Thamani ya Hisa moja mpaka sasa</div>
         <div class="value">TZS ${fmtTZS(Math.round(currentShareValue))}</div>
       </div>
+      <div class="stat-card">
+        <div class="label">Mtaji (Fedha ulizochangia)</div>
+        <div class="value">TZS ${fmtTZS(myTotalShares * KIKOBA_SHARE_PRICE)}</div>
+      </div>
       <div class="stat-card pos">
         <div class="label">Faida(gawio)</div>
         <div class="value">TZS ${fmtTZS(Math.round(myTotalValue))}</div>
@@ -549,13 +553,15 @@ async function renderChairmanTabContent(){
       const statusStamp = m.status === 'active'
         ? '<span class="stamp stamp-paid">Active</span>'
         : '<span class="stamp stamp-unpaid">Removed</span>';
+      const actionBtns = m.status==='active'
+        ? `<button class="btn btn-danger btn-sm" onclick="removeMember('${m.id}')">Remove Membership</button>`
+        : `<button class="btn btn-outline btn-sm" onclick="restoreMember('${m.id}')">Restore</button>
+           <button class="btn btn-danger btn-sm" style="margin-left:6px;" onclick="deleteMemberPermanently('${m.id}')">Delete Permanent</button>`;
       rows += `<tr>
         <td>${escapeHTML(m.name)}</td>
         <td>${escapeHTML(m.email)}</td>
         <td>${statusStamp}</td>
-        <td>${m.status==='active'
-              ? `<button class="btn btn-danger btn-sm" onclick="removeMember('${m.id}')">Remove Membership</button>`
-              : `<button class="btn btn-outline btn-sm" onclick="restoreMember('${m.id}')">Restore</button>`}</td>
+        <td>${actionBtns}</td>
       </tr>`;
     });
     if(!rows) rows = `<tr><td colspan="4" class="empty-state">No registered members yet.</td></tr>`;
@@ -563,6 +569,12 @@ async function renderChairmanTabContent(){
     c.innerHTML = `
       <div class="card">
         <div class="section-title"><h3>Members List (${allMembersCache.filter(m=>m.role==='member').length})</h3></div>
+        <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
+          "Delete Permanent" inapatikana TU kwa wanachama walioondolewa (Removed) tayari. Inafuta rekodi zake ZOTE
+          (hisa, mikopo, marejesho, faini, michango, maombi) kutoka mfumo — kitendo hiki hakiwezi kurudishwa.
+          Baada ya kufuta, bado unahitaji kufuta akaunti yake ya Authentication kwenye Firebase Console
+          ili email yake iweze kutumika tena kujisajili.
+        </p>
         <table>
           <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -889,6 +901,68 @@ async function restoreMember(memberId){
   await db.collection('members').doc(memberId).update({ status:'active' });
   await fetchAllMembers(true);
   renderChairmanTabContent();
+}
+
+/* =========================================================
+   DELETE PERMANENT — futa kabisa mwanachama na record zake ZOTE
+   (members, kikobaMembers, kikobaShares, kikobaLoans+repayments,
+   kikobaFines, contributions, assistanceRequests). Hii HAIWEZI
+   kufuta akaunti yake ya Firebase Authentication (client SDK
+   haiwezi kumfutia mtu mwingine) — chairman anahitaji kufuta
+   hiyo mwenyewe kwenye Firebase Console baada ya hapa.
+   ========================================================= */
+async function deleteMemberPermanently(memberId){
+  const member = allMembersCache.find(m=>m.id===memberId);
+  const name = member ? member.name : 'huyu mwanachama';
+
+  if(member && member.status !== 'removed'){
+    alert('Mwanachama lazima awe "Removed" kwanza kabla ya "Delete Permanent". Tumia "Remove Membership" kwanza.');
+    return;
+  }
+
+  if(!confirm(`Una uhakika KABISA unataka KUFUTA ${name} pamoja na rekodi zake ZOTE (hisa, mikopo, marejesho, faini, michango, maombi)? Kitendo hiki HAKIWEZI kurudishwa.`)) return;
+
+  const typed = prompt(`Kuthibitisha, andika jina lake kikamilifu kama lilivyo: "${name}"`);
+  if(typed !== name){
+    alert('Jina halikulingana kabisa. Operesheni imesitishwa kwa usalama.');
+    return;
+  }
+
+  try{
+    const batch = db.batch();
+
+    batch.delete(db.collection('members').doc(memberId));
+    batch.delete(db.collection('kikobaMembers').doc(memberId));
+
+    const sharesSnap = await db.collection('kikobaShares').where('memberId','==',memberId).get();
+    sharesSnap.forEach(d=> batch.delete(d.ref));
+
+    const finesSnap = await db.collection('kikobaFines').where('memberId','==',memberId).get();
+    finesSnap.forEach(d=> batch.delete(d.ref));
+
+    const contribSnap = await db.collection('contributions').where('memberId','==',memberId).get();
+    contribSnap.forEach(d=> batch.delete(d.ref));
+
+    const reqSnap = await db.collection('assistanceRequests').where('memberId','==',memberId).get();
+    reqSnap.forEach(d=> batch.delete(d.ref));
+
+    const loansSnap = await db.collection('kikobaLoans').where('memberId','==',memberId).get();
+    for(const loanDoc of loansSnap.docs){
+      batch.delete(loanDoc.ref);
+      const repaySnap = await db.collection('kikobaRepayments').where('loanId','==',loanDoc.id).get();
+      repaySnap.forEach(r=> batch.delete(r.ref));
+    }
+
+    await batch.commit();
+
+    alert(`${name} amefutwa kabisa kwenye mfumo.\n\nKUMBUKA: Bado unahitaji kufuta akaunti yake ya Authentication kwenye Firebase Console (Authentication > Users) ili email yake iweze kutumika tena kujisajili.`);
+
+    await fetchAllMembers(true);
+    await fetchKikobaMembers(true);
+    renderChairmanTabContent();
+  }catch(err){
+    alert('Hitilafu: ' + err.message);
+  }
 }
 
 async function submitAssistanceRequest(){
