@@ -2283,10 +2283,25 @@ async function renderKikobaShareRecordsTable(){
 
   if(!rows) rows = `<tr><td colspan="5" class="empty-state">Hakuna record za hisa kwa kipindi hiki.</td></tr>`;
 
+  const totalAmount = docs.reduce((s,r)=> s + Number(r.amount||0), 0);
+  const totalShares = docs.reduce((s,r)=> s + Number(r.shares||0), 0);
+  const periodLabel = kikobaShareFilterMonth === 'all'
+    ? `Miezi Yote — ${kikobaShareFilterYear}`
+    : `${KIKOBA_MONTH_NAMES_SW[kikobaShareFilterMonth-1]} ${kikobaShareFilterYear}`;
+
+  const totalRow = docs.length
+    ? `<tr style="font-weight:700; border-top:2px solid var(--line);">
+        <td colspan="2">JUMLA (${escapeHTML(periodLabel)})</td>
+        <td class="amount">TZS ${fmtTZS(totalAmount)}</td>
+        <td>${totalShares}</td>
+        <td></td>
+      </tr>`
+    : '';
+
   box.innerHTML = `
     <table>
       <thead><tr><th>Member</th><th>Mwezi</th><th>Kiasi</th><th>Hisa</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows}${totalRow}</tbody>
     </table>
   `;
 }
@@ -2379,7 +2394,7 @@ function updateKikobaLoanPreview(){
   let html = `Riba ya Mwezi wa Kwanza (5%): <strong>TZS ${fmtTZS(month1Interest)}</strong> — riba itaongezeka kila mwezi (10% mwezi wa 2, 15% mwezi wa 3), ikihesabiwa kwa kiasi kilichobaki.`;
 
   if(deficit > 0){
-    html += `<br><span style="color:var(--red); font-weight:700;">⚠ Mtaji wa Kikoba hautoshi kwa TZS ${fmtTZS(deficit)}. Punguza kiasi cha mkopo au ongeza mtaji wa Kikoba kwanza.</span>`;
+    html += `<br><span style="color:var(--red); font-weight:700;">⚠ Mtaji wa Kikoba hautoshi kwa TZS ${fmtTZS(deficit)}. Ukiendelea, "Mtaji uliopo (Salio)" itaonekana HASI.</span>`;
   }
 
   box.innerHTML = html;
@@ -2398,13 +2413,13 @@ async function giveKikobaLoan(){
   }
 
   const availableCapital = window.__kikobaAvailableCapital || 0;
-  if(principal > availableCapital){
-    msgBox.innerHTML = `<div class="msg msg-error">Mtaji wa Kikoba hautoshi. Kiasi kilichopo: TZS ${fmtTZS(Math.round(availableCapital))}.</div>`;
-    return;
-  }
+  const willGoNegative = principal > availableCapital;
 
   try{
-    if(!confirm(`Thibitisha: unatoa mkopo wa TZS ${fmtTZS(principal)}. Riba itaanza kwa 5% mwezi wa kwanza, ikiongezeka kila mwezi. Endelea?`)) return;
+    const warnNote = willGoNegative
+      ? `\n\n⚠ Onyo: Mtaji uliopo (TZS ${fmtTZS(Math.round(availableCapital))}) hautoshi kwa mkopo huu. Baada ya kutoa mkopo huu, "Mtaji uliopo (Salio)" itaonekana HASI (-).`
+      : '';
+    if(!confirm(`Thibitisha: unatoa mkopo wa TZS ${fmtTZS(principal)}. Riba itaanza kwa 5% mwezi wa kwanza, ikiongezeka kila mwezi.${warnNote}\n\nEndelea?`)) return;
 
     await db.collection('kikobaLoans').add({
       memberId, principal,
