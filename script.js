@@ -57,6 +57,28 @@ function escapeHTML(str){
 }
 
 /* =========================================================
+   NUMBER FORMATTING HELPER — comma thousand separators
+   kwa fields za kujaza namba (mfano: Mtaji/Riba kwenye
+   Record Marejesho) ili kusaidia kusoma namba kubwa vizuri
+   bila kuchanganya (mfano: 1,500,000 badala ya 1500000)
+   ========================================================= */
+function formatCommaInput(el){
+  const cursorFromEnd = el.value.length - el.selectionStart;
+  const raw = el.value.replace(/[^0-9]/g, '');
+  if(raw === ''){ el.value = ''; return; }
+  const formatted = Number(raw).toLocaleString('en-US');
+  el.value = formatted;
+  const newPos = Math.max(0, formatted.length - cursorFromEnd);
+  try{ el.setSelectionRange(newPos, newPos); }catch(e){}
+}
+function parseCommaFloat(value){
+  if(value === null || value === undefined) return NaN;
+  const cleaned = String(value).replace(/,/g, '').trim();
+  if(cleaned === '') return NaN;
+  return parseFloat(cleaned);
+}
+
+/* =========================================================
    AUTH: LOGIN / REGISTER / LOGOUT / FORGOT PASSWORD
    ========================================================= */
 function showRegister(){
@@ -1942,6 +1964,7 @@ async function renderKikobaAccountantTab(c){
       <button class="tab-btn ${kikobaAccountantSubTab==='kshares'?'active':''}" onclick="switchKikobaAccountantSubTab('kshares')">Record Hisa</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='kdisburse'?'active':''}" onclick="switchKikobaAccountantSubTab('kdisburse')">Toa mkopo</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='krepay'?'active':''}" onclick="switchKikobaAccountantSubTab('krepay')">Record Marejesho</button>
+      <button class="tab-btn ${kikobaAccountantSubTab==='khistory'?'active':''}" onclick="switchKikobaAccountantSubTab('khistory')">Historia Marejesho</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='kfines'?'active':''}" onclick="switchKikobaAccountantSubTab('kfines')">Faini</button>
       <button class="tab-btn ${kikobaAccountantSubTab==='kexp'?'active':''}" onclick="switchKikobaAccountantSubTab('kexp')">Kikoba Expenses</button>
     </div>
@@ -2090,8 +2113,8 @@ async function renderKikobaAccountantSubContent(){
             Huu ni mwendelezo wa mwezi uleule (riba tayari ililipwa)
           </label>
           <div id="repayPreview_${loan.id}" style="font-size:0.75rem; color:var(--ink-soft); margin-bottom:6px;"></div>
-          <input type="number" id="repayTotal_${loan.id}" placeholder="Mtaji Alicholeta (bila riba)" style="width:140px; padding:8px; border:1px solid var(--line); border-radius:8px; margin-bottom:4px;">
-          <input type="number" id="repayInterest_${loan.id}" placeholder="Kiasi cha Riba" style="width:140px; padding:8px; border:1px solid var(--line); border-radius:8px;">
+          <input type="text" inputmode="numeric" id="repayTotal_${loan.id}" placeholder="Mtaji Alicholeta (bila riba)" oninput="formatCommaInput(this)" style="width:150px; padding:8px; border:1px solid var(--line); border-radius:8px; margin-bottom:4px;">
+          <input type="text" inputmode="numeric" id="repayInterest_${loan.id}" placeholder="Kiasi cha Riba" oninput="formatCommaInput(this)" style="width:150px; padding:8px; border:1px solid var(--line); border-radius:8px;">
           <button class="btn btn-primary btn-sm" style="margin-top:6px; display:block;" onclick="recordKikobaRepayment('${loan.id}')">Confirm</button>
         </td>
       </tr>`;
@@ -2146,6 +2169,10 @@ async function renderKikobaAccountantSubContent(){
       const unpaidInterest = Number(loan.unpaidInterest||0);
       updateRepayPreview(loan.id, remainingPrincipal, unpaidInterest);
     });
+  }
+
+  else if(kikobaAccountantSubTab === 'khistory'){
+    await renderKikobaRepaymentHistoryTab(box);
   }
 
   else if(kikobaAccountantSubTab === 'kfines'){
@@ -2224,6 +2251,8 @@ async function recordKikobaShare(){
 const KIKOBA_MONTH_NAMES_SW = ['Januari','Februari','Machi','Aprili','Mei','Juni','Julai','Agosti','Septemba','Oktoba','Novemba','Desemba'];
 let kikobaShareFilterMonth = new Date().getMonth()+1;
 let kikobaShareFilterYear = new Date().getFullYear();
+let kikobaRepayHistFilterMonth = new Date().getMonth()+1;
+let kikobaRepayHistFilterYear = new Date().getFullYear();
 
 let kikobaShareFiscalYearStart = (function(){
   const now = new Date();
@@ -2452,6 +2481,9 @@ async function giveKikobaLoan(){
    Hii inarekebisha bug ya awali ambapo mtaji uliobaki
    ulionekana mkubwa zaidi kuliko ilivyotakiwa (mfano: 150,000
    badala ya 100,000).
+   UPDATE: fields za "Mtaji Alicholeta" na "Kiasi cha Riba"
+   sasa zinakubali comma (mfano 1,500,000) — zinasomwa kwa
+   parseCommaFloat() badala ya parseFloat() ya moja kwa moja.
    ========================================================= */
 async function recordKikobaRepayment(loanId){
   const cycleSel = document.getElementById('repayMonth_'+loanId);
@@ -2461,8 +2493,8 @@ async function recordKikobaRepayment(loanId){
 
   const isSameMonth = sameMonthChk && sameMonthChk.checked;
   const selectedCycleMonth = parseInt(cycleSel.value);
-  const principalBroughtInput = parseFloat(totalInput.value); // MTAJI PEKEE alicholeta (bila riba)
-  const interestPaid = parseFloat(interestInput.value);
+  const principalBroughtInput = parseCommaFloat(totalInput.value); // MTAJI PEKEE alicholeta (bila riba)
+  const interestPaid = parseCommaFloat(interestInput.value);
 
   if(isNaN(principalBroughtInput) || principalBroughtInput < 0){ alert("Weka kiasi cha MTAJI alicholeta (bila riba). Weka 0 kama alilipa riba tu."); return; }
   if(isNaN(interestPaid) || interestPaid < 0){ alert("Weka kiasi cha riba aliyolipa (0 kama hakuna)."); return; }
@@ -2553,6 +2585,121 @@ function updateRepayPreview(loanId, remainingPrincipal, unpaidInterest){
   const interestDue = Math.round(remainingPrincipal * (rate/100));
   const totalOwedNow = interestDue + Number(unpaidInterest||0) + Number(remainingPrincipal||0);
   box.innerHTML = `Riba ya Mwezi Huu (${rate}%): <strong>TZS ${fmtTZS(interestDue)}</strong> | Riba ya Nyuma Isiyolipwa: <strong>TZS ${fmtTZS(unpaidInterest||0)}</strong> | Anachodaiwa Jumla (Principal+Riba): <strong>TZS ${fmtTZS(totalOwedNow)}</strong>`;
+}
+
+/* =========================================================
+   KIKOBA — HISTORIA YA MAREJESHO (kwa mwezi/mwaka)
+   Chuja kwa mwezi/mwaka wa TAREHE ILIYOREKODIWA (recordedAtMillis),
+   si mwezi wa kutolewa mkopo. Ina Edit/Delete moja kwa moja
+   kwa kutumia functions zilizopo tayari (editKikobaRepaymentPrompt,
+   deleteKikobaRepayment) — hakuna logic mpya ya mahesabu.
+   ========================================================= */
+async function renderKikobaRepaymentHistoryTab(box){
+  const { yearOptions } = yearMonthOptionsHTML();
+  const filterMonthOptions = ['<option value="all">Miezi Yote</option>']
+    .concat(KIKOBA_MONTH_NAMES_SW.map((name,i)=>`<option value="${i+1}" ${kikobaRepayHistFilterMonth==(i+1)?'selected':''}>${name}</option>`))
+    .join('');
+
+  box.innerHTML = `
+    <div class="card">
+      <div class="section-title"><h3>Historia ya Marejesho Yaliyorekodiwa</h3></div>
+      <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
+        Chuja kwa mwezi/mwaka ambao rejesho LILIREKODIWA (si mwezi wa mkopo). Bonyeza "Edit" kusahihisha
+        namba iliyojazwa kimakosa, au "Delete" kufuta — mahesabu ya mkopo husika yatarekebishwa kiotomatiki.
+      </p>
+      <div class="form-row">
+        <div class="field">
+          <label>Chuja kwa Mwezi</label>
+          <select id="repayHistFilterMonth" onchange="onKikobaRepayHistFilterChange()">${filterMonthOptions}</select>
+        </div>
+        <div class="field">
+          <label>Mwaka</label>
+          <select id="repayHistFilterYear" onchange="onKikobaRepayHistFilterChange()">${yearOptions}</select>
+        </div>
+      </div>
+      <div id="repayHistTable">Inapakia...</div>
+    </div>
+  `;
+
+  const yearSel = document.getElementById('repayHistFilterYear');
+  if(yearSel) yearSel.value = String(kikobaRepayHistFilterYear);
+
+  await renderKikobaRepaymentHistoryTable();
+}
+
+function onKikobaRepayHistFilterChange(){
+  const monthSel = document.getElementById('repayHistFilterMonth');
+  const yearSel = document.getElementById('repayHistFilterYear');
+  kikobaRepayHistFilterMonth = monthSel.value === 'all' ? 'all' : parseInt(monthSel.value);
+  kikobaRepayHistFilterYear = parseInt(yearSel.value);
+  renderKikobaRepaymentHistoryTable();
+}
+
+async function renderKikobaRepaymentHistoryTable(){
+  const box = document.getElementById('repayHistTable');
+  if(!box) return;
+  box.innerHTML = 'Inapakia...';
+
+  const snap = await db.collection('kikobaRepayments').get();
+  let docs = []; snap.forEach(d=> docs.push({id:d.id, ...d.data()}));
+
+  docs = docs.filter(r=>{
+    if(!r.recordedAtMillis) return false;
+    const d = new Date(r.recordedAtMillis);
+    const y = d.getFullYear();
+    const m = d.getMonth()+1;
+    if(y !== kikobaRepayHistFilterYear) return false;
+    if(kikobaRepayHistFilterMonth !== 'all' && m !== kikobaRepayHistFilterMonth) return false;
+    return true;
+  });
+
+  docs.sort((a,b)=> (b.recordedAtMillis||0) - (a.recordedAtMillis||0));
+
+  let rows = docs.map(r=>{
+    const member = allMembersCache.find(m=>m.id===r.memberId);
+    const memberName = member ? escapeHTML(member.name) : '—';
+    const dateLabel = r.recordedAtMillis ? new Date(r.recordedAtMillis).toLocaleDateString('en-GB') : '—';
+    const sameMonthTag = r.sameMonthContinuation
+      ? ` <span style="font-size:0.68rem; color:var(--ink-soft);">(Mwendelezo)</span>`
+      : ` <span style="font-size:0.68rem; color:var(--ink-soft);">(Mwezi ${r.cycleMonth||'—'}, ${r.rate||0}%)</span>`;
+    return `<tr>
+      <td>${memberName}</td>
+      <td>${dateLabel}${sameMonthTag}</td>
+      <td class="amount">TZS ${fmtTZS(r.principalPaid)}</td>
+      <td class="amount">TZS ${fmtTZS(r.interestPaid)}</td>
+      <td class="amount">TZS ${fmtTZS(r.amountPaid)}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="editKikobaRepaymentPrompt('${r.id}','${r.loanId}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteKikobaRepayment('${r.id}','${r.loanId}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  if(!rows) rows = `<tr><td colspan="6" class="empty-state">Hakuna marejesho yaliyorekodiwa kwa kipindi hiki.</td></tr>`;
+
+  const totalPrincipal = docs.reduce((s,r)=> s + Number(r.principalPaid||0), 0);
+  const totalInterest = docs.reduce((s,r)=> s + Number(r.interestPaid||0), 0);
+  const totalAmount = docs.reduce((s,r)=> s + Number(r.amountPaid||0), 0);
+  const periodLabel = kikobaRepayHistFilterMonth === 'all'
+    ? `Miezi Yote — ${kikobaRepayHistFilterYear}`
+    : `${KIKOBA_MONTH_NAMES_SW[kikobaRepayHistFilterMonth-1]} ${kikobaRepayHistFilterYear}`;
+
+  const totalRow = docs.length
+    ? `<tr style="font-weight:700; border-top:2px solid var(--line);">
+        <td colspan="2">JUMLA (${escapeHTML(periodLabel)})</td>
+        <td class="amount">TZS ${fmtTZS(totalPrincipal)}</td>
+        <td class="amount">TZS ${fmtTZS(totalInterest)}</td>
+        <td class="amount">TZS ${fmtTZS(totalAmount)}</td>
+        <td></td>
+      </tr>`
+    : '';
+
+  box.innerHTML = `
+    <table>
+      <thead><tr><th>Member</th><th>Tarehe ya Kurekodi</th><th>Mtaji Alicholeta</th><th>Riba Aliyolipa</th><th>Jumla</th><th></th></tr></thead>
+      <tbody>${rows}${totalRow}</tbody>
+    </table>
+  `;
 }
 
 /* =========================================================
@@ -2762,8 +2909,8 @@ function editKikobaRepaymentPrompt(repayId, loanId){
   const sameMonthStr = prompt("Je, hii ilikuwa mwendelezo wa mwezi uleule (bila riba mpya)? Andika NDIO au HAPANA:", "HAPANA");
   if(sameMonthStr === null) return;
   const isSameMonth = sameMonthStr.trim().toUpperCase() === 'NDIO';
-  const newPrincipal = parseFloat(newPrincipalStr);
-  const newInterest = parseFloat(newInterestStr);
+  const newPrincipal = parseCommaFloat(newPrincipalStr);
+  const newInterest = parseCommaFloat(newInterestStr);
   const newTotal = newPrincipal + newInterest; // jumla halisi = mtaji + riba
   editKikobaRepayment(repayId, loanId, newTotal, newInterest, parseInt(newMonthStr), isSameMonth);
 }
@@ -2818,6 +2965,7 @@ async function editKikobaRepayment(repayId, loanId, newAmountPaid, newInterestPa
     alert("Rejesho limesahihishwa na mahesabu ya mkopo mzima yamerekebishwa.");
     await loadLoanEditDetails();
     await renderKikobaAccountantTab(document.getElementById('accountantContent'));
+    if(document.getElementById('repayHistTable')) await renderKikobaRepaymentHistoryTable();
   }catch(err){
     alert("Error: " + err.message);
   }
@@ -2864,6 +3012,7 @@ async function deleteKikobaRepayment(repayId, loanId){
     alert("Rejesho limefutwa na mahesabu yamerekebishwa.");
     await loadLoanEditDetails();
     await renderKikobaAccountantTab(document.getElementById('accountantContent'));
+    if(document.getElementById('repayHistTable')) await renderKikobaRepaymentHistoryTable();
   }catch(err){
     alert("Error: " + err.message);
   }
