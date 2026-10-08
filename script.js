@@ -2007,7 +2007,7 @@ async function renderKikobaAccountantSubContent(){
         </div>
         <div class="field" style="max-width:220px;">
           <label>Amount Paid (TZS) — must be a multiple of ${fmtTZS(KIKOBA_SHARE_PRICE)}</label>
-          <input type="number" id="kshareAmount" placeholder="e.g. 30000" step="${KIKOBA_SHARE_PRICE}">
+          <input type="text" inputmode="numeric" id="kshareAmount" placeholder="e.g. 30,000" oninput="formatCommaInput(this)">
         </div>
         <p style="font-size:0.75rem; color:var(--ink-soft); margin-top:-6px; margin-bottom:12px;">
           Amount lazima igawanyike sawasawa na TZS ${fmtTZS(KIKOBA_SHARE_PRICE)} (bei ya hisa 1). Ukiingiza kiasi kisicho kamili, mfumo utakataa ili fedha isipotee.
@@ -2096,7 +2096,11 @@ async function renderKikobaAccountantSubContent(){
       const monthOpts = [1,2,3].map(m=>`<option value="${m}" ${m===1?'selected':''}>Mwezi ${m} (${m*5}%)</option>`).join('');
 
       const newCycleBtn = cyclePosition>=3 ? `<button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="startNewKikobaCycle('${loan.id}')">Anzisha Mzunguko Mpya</button>` : '';
-      return `<tr>
+
+      // jina la kutafutia (lowercase) — linatumika na kisanduku cha "Tafuta Mwanachama"
+      const searchName = member ? String(member.name).toLowerCase().replace(/"/g,'&quot;') : '';
+
+      return `<tr class="repay-row" data-name="${searchName}">
         <td>${member?escapeHTML(member.name):'—'}${renewalTag}
           <div style="font-size:0.72rem;color:var(--ink-soft);margin-top:4px;">Mzunguko wa Sasa: Mwezi ${cyclePosition}</div>${newCycleBtn}
         </td>
@@ -2130,6 +2134,11 @@ async function renderKikobaAccountantSubContent(){
           kulipa kwa miezi kadhaa mfululizo. Jaza <strong>MTAJI peke yake</strong> alicholeta (bila riba) kwenye "Mtaji Alicholeta",
           na sehemu ya riba aliyolipa tofauti kwenye "Kiasi cha Riba".
         </p>
+        <div class="field" style="max-width:320px; margin-bottom:14px;">
+          <label>Tafuta Mwanachama</label>
+          <input type="text" id="repaySearch" placeholder="Andika jina..." oninput="filterRepayRows()">
+        </div>
+        <div id="repayNoResult" class="msg msg-error" style="display:none; margin-bottom:12px;">Hakuna mwanachama mwenye mkopo hai anayelingana na jina hilo.</div>
         <table><thead><tr><th>Member</th><th>Kiasi alichokopa (bila riba)</th><th>Kilichobaki(baada ya kutoa na riba)</th><th>Riba Isiyolipwa</th><th>Rekodi Marejesho</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
 
@@ -2225,7 +2234,7 @@ async function recordKikobaShare(){
   const memberId = document.getElementById('kshareMember').value;
   const month = parseInt(document.getElementById('kshareMonth').value);
   const year = parseInt(document.getElementById('kshareYear').value);
-  const amount = parseFloat(document.getElementById('kshareAmount').value);
+  const amount = parseCommaFloat(document.getElementById('kshareAmount').value);
   if(!memberId || !amount || amount < KIKOBA_SHARE_PRICE){
     msgBox.innerHTML = `<div class="msg msg-error">Enter a valid amount (minimum TZS ${fmtTZS(KIKOBA_SHARE_PRICE)}).</div>`;
     return;
@@ -2585,6 +2594,27 @@ function updateRepayPreview(loanId, remainingPrincipal, unpaidInterest){
   const interestDue = Math.round(remainingPrincipal * (rate/100));
   const totalOwedNow = interestDue + Number(unpaidInterest||0) + Number(remainingPrincipal||0);
   box.innerHTML = `Riba ya Mwezi Huu (${rate}%): <strong>TZS ${fmtTZS(interestDue)}</strong> | Riba ya Nyuma Isiyolipwa: <strong>TZS ${fmtTZS(unpaidInterest||0)}</strong> | Anachodaiwa Jumla (Principal+Riba): <strong>TZS ${fmtTZS(totalOwedNow)}</strong>`;
+}
+
+/* =========================================================
+   KIKOBA — TAFUTA MWANACHAMA KWENYE "RECORD MAREJESHO"
+   Inachuja safu za mikopo hai kwa jina la mwanachama.
+   Safu zisizolingana zinafichwa (display:none), zinazolingana
+   zinabaki na fomu yake ya kurekodi rejesho ikiwa hai kama kawaida.
+   ========================================================= */
+function filterRepayRows(){
+  const searchEl = document.getElementById('repaySearch');
+  if(!searchEl) return;
+  const q = searchEl.value.trim().toLowerCase();
+  const rows = document.querySelectorAll('.repay-row');
+  let shown = 0;
+  rows.forEach(r=>{
+    const match = (r.dataset.name || '').includes(q);
+    r.style.display = match ? '' : 'none';
+    if(match) shown++;
+  });
+  const none = document.getElementById('repayNoResult');
+  if(none) none.style.display = (rows.length && shown === 0) ? '' : 'none';
 }
 
 /* =========================================================
