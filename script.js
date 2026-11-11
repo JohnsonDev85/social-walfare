@@ -2053,27 +2053,27 @@ async function renderKikobaAccountantSubContent(){
     const { yearOptions, monthOptions } = yearMonthOptionsHTML();
     const availableCapital = window.__kikobaAvailableCapital || 0;
 
-    // Mikopo ya hivi karibuni (kwa ajili ya kufuta kama imetolewa kimakosa)
-    const recentLoansSnap = await db.collection('kikobaLoans').get();
-    let recentLoans = [];
-    recentLoansSnap.forEach(d=> recentLoans.push({id:d.id, ...d.data()}));
-    recentLoans.sort((a,b)=> (b.disbursedAtMillis||0) - (a.disbursedAtMillis||0));
-    recentLoans = recentLoans.slice(0, 10);
+    // Mikopo YOTE (mpya kwanza) — kwa ajili ya kutafuta kwa jina na kufuta kama imetolewa kimakosa
+    const allLoansSnap = await db.collection('kikobaLoans').get();
+    let allLoans = [];
+    allLoansSnap.forEach(d=> allLoans.push({id:d.id, ...d.data()}));
+    allLoans.sort((a,b)=> (b.disbursedAtMillis||0) - (a.disbursedAtMillis||0));
 
-    let recentLoanRows = recentLoans.map(loan=>{
+    let loanRows = allLoans.map(loan=>{
       const member = allMembersCache.find(m=>m.id===loan.memberId);
       const hasRepayments = Number(loan.amountRepaid||0) > 0;
+      const searchName = member ? String(member.name).toLowerCase().replace(/"/g,'&quot;') : '';
       const actionHtml = hasRepayments
         ? `<span style="font-size:0.72rem; color:var(--ink-soft);">Ana marejesho — tumia "Record Marejesho" kuedit/kufuta</span>`
         : `<button class="btn btn-danger btn-sm" onclick="deleteKikobaLoan('${loan.id}')">Delete</button>`;
-      return `<tr>
+      return `<tr class="loan-del-row" data-name="${searchName}">
         <td>${member ? escapeHTML(member.name) : '—'}</td>
         <td>${loan.month ? KIKOBA_MONTH_NAMES_SW[loan.month-1] + ' ' + loan.year : '—'}</td>
         <td class="amount">TZS ${fmtTZS(loan.principal)}</td>
         <td>${actionHtml}</td>
       </tr>`;
     }).join('');
-    if(!recentLoanRows) recentLoanRows = `<tr><td colspan="4" class="empty-state">Hakuna mkopo uliotolewa bado.</td></tr>`;
+    if(!loanRows) loanRows = `<tr><td colspan="4" class="empty-state">Hakuna mkopo uliotolewa bado.</td></tr>`;
 
     box.innerHTML = `
       <div class="card">
@@ -2100,14 +2100,19 @@ async function renderKikobaAccountantSubContent(){
       </div>
 
       <div class="card" style="margin-top:20px;">
-        <div class="section-title"><h3>Mikopo Iliyotolewa Hivi Karibuni (10)</h3></div>
+        <div class="section-title"><h3>Futa Mkopo Uliotolewa Kimakosa</h3></div>
         <p style="font-size:0.78rem; color:var(--ink-soft); margin-bottom:12px;">
-          Kama umempa mtu mkopo kimakosa, bonyeza "Delete". Unaweza kufuta TU mkopo ambao bado
-          hauna marejesho yoyote. Mtaji uliopo utarudi kama kawaida baada ya kufuta.
+          Tafuta jina la mwanachama, kisha bonyeza "Delete" kwenye mkopo wake. Unaweza kufuta TU mkopo
+          ambao bado hauna marejesho yoyote. Mtaji uliopo utarudi kama kawaida baada ya kufuta.
         </p>
+        <div class="field" style="max-width:320px; margin-bottom:14px;">
+          <label>Tafuta Mwanachama</label>
+          <input type="text" id="loanDelSearch" placeholder="Andika jina..." oninput="filterLoanDeleteRows()">
+        </div>
+        <div id="loanDelNoResult" class="msg msg-error" style="display:none; margin-bottom:12px;">Hakuna mkopo wa jina hilo.</div>
         <table>
           <thead><tr><th>Member</th><th>Mwezi</th><th>Kiasi</th><th>Action</th></tr></thead>
-          <tbody>${recentLoanRows}</tbody>
+          <tbody>${loanRows}</tbody>
         </table>
       </div>
     `;
@@ -2607,6 +2612,24 @@ async function giveKikobaLoan(){
   }catch(err){
     msgBox.innerHTML = `<div class="msg msg-error">Error: ${err.message}</div>`;
   }
+}
+
+/* =========================================================
+   KIKOBA — TAFUTA MWANACHAMA KWENYE "FUTA MKOPO" (Toa mkopo tab)
+   ========================================================= */
+function filterLoanDeleteRows(){
+  const searchEl = document.getElementById('loanDelSearch');
+  if(!searchEl) return;
+  const q = searchEl.value.trim().toLowerCase();
+  const rows = document.querySelectorAll('.loan-del-row');
+  let visible = 0;
+  rows.forEach(r=>{
+    const match = !q || (r.dataset.name || '').includes(q);
+    r.style.display = match ? '' : 'none';
+    if(match) visible++;
+  });
+  const noRes = document.getElementById('loanDelNoResult');
+  if(noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
 }
 
 /* =========================================================
